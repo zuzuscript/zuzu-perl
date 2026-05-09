@@ -1,0 +1,28 @@
+from std/data/json import *;
+from test/more import *;
+let j := new JSON( pretty: false, canonical: true );
+is( j.encode( [ 1, 2, 3 ] ), "[1,2,3]", "j.encode" );
+is( j.decode("[1,2,3]"), [ 1, 2, 3 ], "j.decode" );
+is( j.encode( {foo:1,bar:2} ), "{\"bar\":2,\"foo\":1}", "canonical" );
+
+let nested := {{
+	foo: 1,
+	foo: 2,
+	bar: << 3, 2, 1 >>,
+	baz: <<< 3, 2, 1, 1 >>>,
+}};
+let simpler := {{
+	foo: 1,
+	foo: 2,
+	bar: [ 1, 2, 3 ],
+	baz: [ 1, 1, 2, 3 ],
+}};
+is( j.encode(nested), j.encode(simpler), "JSON encodes PairList, Set, and Bag as expected", );
+
+unlike( j.encode(nested), /list/, "PairList encoded as plain JSON object" );
+
+is( j.decode(j.encode(nested)).keys, << "foo", "bar", "baz" >>, "PairList keys not roundtripped by default", );
+let j2 := new JSON( pairlists: true );
+is( j2.decode(j2.encode(nested)).keys, [ "foo", "foo", "bar", "baz" ], "PairList keys roundtripped with pairlists:true option", );
+
+done_testing();

@@ -1,0 +1,46 @@
+from std/path/z/node import Node;
+from test/more import *;
+
+let root := Node.from_root( {
+	name: "Ada",
+	age: 37,
+	tags: [ "a", "b" ],
+} );
+
+is( root.type(), "map", "root dict is map" );
+
+let kids := root.children();
+ok( kids.length() >= 3, "dict children are wrapped" );
+
+let name_node := null;
+for ( let kid in kids ) {
+	if ( kid.key() ≡ "name" ) {
+		name_node := kid;
+	}
+}
+
+ok( name_node ≢ null, "name child found" );
+is( name_node.type(), "string", "name child type" );
+is( name_node.string_value(), "Ada", "string_value uses primitive conversion" );
+
+let dump := root.dump();
+is( dump{"@type"}, "map", "dump includes type" );
+
+let scoped_root := Node.from_root( {
+	name: "Grace",
+} );
+let scoped_child := scoped_root.children().first( fn kid → kid.key() ≡ "name" );
+is( scoped_child.parent(), scoped_root, "child sees live parent node" );
+scoped_root := null;
+is( scoped_child.parent(), null, "child does not keep parent node alive" );
+
+let threw := false;
+try {
+	root.find("/name");
+}
+catch {
+	threw := true;
+}
+ok( threw, "find currently throws stub error" );
+
+done_testing();

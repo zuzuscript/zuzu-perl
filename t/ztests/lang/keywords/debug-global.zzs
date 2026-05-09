@@ -1,0 +1,5 @@
+from test/more import *;
+
+is( DEBUG, 0, "DEBUG global defaults to zero" );
+
+done_testing();

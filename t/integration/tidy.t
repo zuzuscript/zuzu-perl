@@ -1,0 +1,256 @@
+use Test2::V0;
+
+use File::Spec;
+use File::Temp qw( tempdir );
+
+use Zuzu::Tidy;
+
+my $messy = <<'SRC';
+function foo(a,b){if(a){say "x"}else{say "y"}}
+let arr:=[1, n+1]
+while(let line:=file.get_line){say line}
+=pod
+This pod should stay untouched.
+=cut
+foo.mymethod("foo")
+foo.mymethod("abcdefghijklmnopqrstuvwxyz")
+foo.mymethod(some_long_function_name)
+foo.mymethod(some_long_function_name())
+SRC
+
+my $tidied = Zuzu::Tidy->tidy( $messy, filename => 'sample.zzs' );
+
+my $expected = <<'OUT';
+function foo ( a, b ) {
+	if (a) {
+		say "x";
+	}
+	else {
+		say "y";
+	}
+}
+
+let arr := [ 1, n + 1 ];
+while ( let line := file.get_line ) {
+	say line;
+}
+
+=pod
+This pod should stay untouched.
+=cut
+
+foo.mymethod("foo");
+foo.mymethod( "abcdefghijklmnopqrstuvwxyz" );
+foo.mymethod(some_long_function_name);
+foo.mymethod( some_long_function_name() );
+OUT
+
+is $tidied, $expected, 'tidy applies spacing, braces, and semicolon rules';
+
+my $vertical_src = <<'SRC';
+function alpha(){say "one"}
+function beta(){
+let x:=1
+let y:=2
+return x+y
+}
+class Demo{
+method tiny(){say "tiny"}
+method big(){
+let a:=1
+let b:=2
+let c:=3
+let d:=4
+return a+b+c+d
+}
+}
+while(flag){
+step1()
+step2()
+step3()
+step4()
+step5()
+}
+function with_comment(){
+let n:=1
+/*line one
+line two*/
+return n
+}
+SRC
+
+my $vertical_tidy = Zuzu::Tidy->tidy( $vertical_src, filename => 'vertical.zzs' );
+
+like(
+	$vertical_tidy,
+	qr/\}\n\nfunction beta \(\) \{/,
+	'adds blank line before a function statement',
+);
+like(
+	$vertical_tidy,
+	qr/\n\}\n\nclass Demo \{/,
+	'adds blank line after a function when not at block end',
+);
+like(
+	$vertical_tidy,
+	qr/class Demo \{\n\n\tmethod tiny \(\) \{/,
+	'adds blank line before a method statement',
+);
+like(
+	$vertical_tidy,
+	qr/\t\}\n\n\tmethod big \(\) \{/,
+	'adds blank line after a method when not at block end',
+);
+like(
+	$vertical_tidy,
+	qr/\n\}\n\nwhile \(flag\) \{/,
+	'adds blank line before a 5+ line statement block',
+);
+like(
+	$vertical_tidy,
+	qr/\treturn x \+ y;\n\}\n\nclass Demo \{/,
+	'adds blank line after a 5+ line block',
+);
+like(
+	$vertical_tidy,
+	qr/\tlet y := 2;\n\n\treturn x \+ y;/,
+	'adds blank line before a final return in function',
+);
+like(
+	$vertical_tidy,
+	qr/\tlet n := 1;\n\n\t\/\*line one\n\tline two\*\/\n\n\treturn n;/,
+	'adds blank line before multiline comments and preserves comment block',
+);
+my $short_return = Zuzu::Tidy->tidy(
+	"function shorty(){return 1}\n",
+	filename => 'short.zzs'
+);
+like(
+	$short_return,
+	qr/function shorty \(\) \{\n\treturn 1;\n\}\n/,
+	'does not force a blank line before final return in very short functions',
+);
+
+my $spacing_src = <<'SRC';
+let i:=1
+i++
+let j:=~i
+function takes_optional(options?){return options}
+let args:=[]
+let x:=foo{bar}
+let y:={{foo:1,bar:2}}
+let cfg:={pretty:false,sort_keys:false,color:false,quiet:false,}
+let arr:=[1,2,3,]
+let set_single:=<<1,2,3,>>
+let bag_single:=<<<1,2,3,>>>
+let arr_force:=[aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa,bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb,cccccccccccccccccccccccccccccccccccccccc,dddddddddddddddddddddddddddddddddddddddd]
+let set_force:=<<aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa,bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb,cccccccccccccccccccccccccccccccccccccccc,dddddddddddddddddddddddddddddddddddddddd>>
+let bag_force:=<<<aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa,bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb,cccccccccccccccccccccccccccccccccccccccc,dddddddddddddddddddddddddddddddddddddddd>>>
+SRC
+
+my $spacing_tidy = Zuzu::Tidy->tidy( $spacing_src, filename => 'spacing.zzs' );
+like $spacing_tidy, qr/\ni\+\+;\n/, 'keeps postfix unary punctuation tight';
+like $spacing_tidy, qr/\nlet j := ~i;\n/, 'keeps prefix unary punctuation tight';
+like $spacing_tidy, qr/function takes_optional \( options\? \) \{/, 'keeps optional marker tight to parameter name';
+like $spacing_tidy, qr/\nlet args := \[\];\n/, 'keeps space after := for array initialization';
+like $spacing_tidy, qr/\nlet x := foo\{bar\};\n/, 'keeps dict element access tight before {';
+like(
+	$spacing_tidy,
+	qr/\nlet y := \{\{\n\tfoo: 1,\n\tbar: 2,\n\}\};\n/,
+	'formats multiline dict literals one item per line with trailing comma',
+);
+like(
+	$spacing_tidy,
+	qr/\nlet cfg := \{ pretty: false, sort_keys: false, color: false, quiet: false \};\n/,
+	'removes trailing comma for single-line dict or bag literals',
+);
+like $spacing_tidy, qr/\nlet arr := \[ 1, 2, 3 \];\n/, 'removes trailing comma for single-line arrays';
+like(
+	$spacing_tidy,
+	qr/\nlet arr_force := \[\n\ta{40},\n\tb{40},\n\tc{40},\n\td{40},\n\];\n/,
+	'formats split arrays one item per line with trailing comma',
+);
+like $spacing_tidy, qr/\nlet set_single := << 1, 2, 3 >>;\n/, 'removes trailing comma for single-line sets';
+like(
+	$spacing_tidy,
+	qr/\nlet set_force := <<\n\ta{40},\n\tb{40},\n\tc{40},\n\td{40},\n>>;\n/,
+	'formats split sets one item per line with trailing comma',
+);
+like $spacing_tidy, qr/\nlet bag_single := <<< 1, 2, 3 >>>;\n/, 'removes trailing comma for single-line bags';
+like(
+	$spacing_tidy,
+	qr/\nlet bag_force := <<<\n\ta{40},\n\tb{40},\n\tc{40},\n\td{40},\n>>>;?\n/,
+	'formats split bags one item per line with trailing comma',
+);
+
+my $import_src = <<'SRC';
+from foo/bar import *;
+from extras/math try import thing;
+let ratio := foo / bar;
+SRC
+my $import_tidy = Zuzu::Tidy->tidy( $import_src, filename => 'import.zzs' );
+like $import_tidy, qr/\Afrom foo\/bar import \*;/m,
+	'keeps module path slash tight in from/import statements';
+like $import_tidy, qr/\nfrom extras\/math try import thing;/,
+	'keeps module path slash tight with try import';
+like $import_tidy, qr/\nlet ratio := foo \/ bar;/,
+	'keeps arithmetic division spacing unchanged';
+
+my $wrap_src = 'let long := a + b + c + d + e + f + g + h + i + j + k + l + m + n + o + p + q + r + s + t';
+my $wrap_tidy = Zuzu::Tidy->tidy( $wrap_src, filename => 'wrap.zzs' );
+my @wrap_lines = split /\n/, $wrap_tidy;
+my $max_width = 0;
+for my $line ( @wrap_lines ) {
+	next if $line eq '';
+	my $len = length $line;
+	$max_width = $len if $len > $max_width;
+}
+ok $max_width <= 100, 'keeps output lines at or below 100 columns';
+
+is(
+	Zuzu::Tidy->tidy("say 1\n=pod\nHello\n=cut\nsay 2\n"),
+	"say 1;\n\n=pod\nHello\n=cut\n\nsay 2;\n",
+	'ensures exactly one blank line around pod boundaries',
+);
+
+is(
+	Zuzu::Tidy->tidy("=pod\nOnly pod\n=cut\n"),
+	"=pod\nOnly pod\n=cut\n",
+	'does not add blank lines at file boundaries for pod-only files',
+);
+
+like $tidied, qr/\n\tif \(a\) \{\n/s,
+	'uses tab indentation';
+like $tidied, qr/\n\t\}\n\telse \{\n/s,
+	'does not cuddle else';
+
+my $repo_root = File::Spec->rel2abs( File::Spec->catdir( File::Spec->curdir ) );
+my $bin = File::Spec->catfile( $repo_root, 'bin', 'zuzu-tidy' );
+ok -x $bin, 'bin/zuzu-tidy exists and is executable';
+
+my $tmpdir = tempdir( CLEANUP => 1 );
+my $script = File::Spec->catfile( $tmpdir, 'cli.zzs' );
+open my $fh, '>:encoding(UTF-8)', $script
+	or die "Could not create $script: $!";
+print {$fh} "let n:=1\n";
+close $fh;
+
+my $cmd = "$^X $bin $script";
+my $output = qx{$cmd};
+my $exit = $? >> 8;
+is $exit, 0, 'zuzu-tidy CLI exits successfully';
+is $output, "let n := 1;\n", 'zuzu-tidy CLI prints tidied output';
+
+my $in_place_cmd = "$^X $bin --in-place $script";
+my $in_place_output = qx{$in_place_cmd};
+my $in_place_exit = $? >> 8;
+is $in_place_exit, 0, 'zuzu-tidy --in-place exits successfully';
+is $in_place_output, '', '--in-place does not print output';
+
+open my $rfh, '<:encoding(UTF-8)', $script
+	or die "Could not read $script: $!";
+my $rewritten = do { local $/; <$rfh> };
+close $rfh;
+is $rewritten, "let n := 1;\n", '--in-place writes tidied content';
+
+done_testing;
