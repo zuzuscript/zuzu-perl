@@ -596,7 +596,7 @@ async function __main__ () {
 ZZS
 
 ok $ok, 'control flow across await ran successfully' or diag $err;
-is $out, "8:4:caught-ok:5:9:inner-outer\n",
+is $out, "8:4:Exception: caught-ok:5:9:inner-outer\n",
 	'await preserves loops, catch, lambdas, methods, and nested spawn';
 
 ( $ok, $out, $err ) = run_zuzu( <<'ZZS' );
@@ -705,7 +705,7 @@ ZZS
 
 ok $ok, 'await works in switch, cleanup, and collection callbacks'
 	or diag $err;
-is $out, "2:4:6:2:4:6:one:body-clean:nested-boom\n",
+is $out, "2:4:6:2:4:6:one:body-clean:Exception: nested-boom\n",
 	'phase A async control-surface regressions are covered';
 
 ( $ok, $out, $err ) = run_zuzu( <<'ZZS' );
@@ -793,7 +793,9 @@ ZZS
 
 ok $ok, 'cancellation tokens, reasons, and closed receive semantics ran successfully'
 	or diag $err;
-is $out, "token reason:token reason:custom reason:closed-null\n",
+is $out,
+	"CancelledException: token reason:CancelledException: token reason:"
+		. "CancelledException: custom reason:closed-null\n",
 	'cancellation tokens cancel watched tasks and closed recv resolves null';
 
 ( $ok, $out, $err ) = run_zuzu( <<'ZZS' );
@@ -844,7 +846,7 @@ async function __main__ () {
 ZZS
 
 ok $ok, 'cancellation cleanup script ran successfully' or diag $err;
-is $out, "stop:clean\n",
+is $out, "CancelledException: stop:clean\n",
 	'cancellation unwinds task cleanup without running later code';
 
 {
