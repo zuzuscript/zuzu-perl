@@ -183,6 +183,64 @@ like(
 	'formats split bags one item per line with trailing comma',
 );
 
+my $current_syntax_src = <<'SRC';
+let bytes:='abc'
+let bytes2:='a\n'
+let template:=```Hello {name}```
+let yes:=⊤
+let no:=⊥
+let none:=∅
+let data:={meta:{title:"T"}}
+let exists:=data@?"/meta/title"
+let first:=data@"/meta/title"
+let all:=data@@"/meta/*"
+let floored:=⌊1.8⌋
+let ceiled:=⌈value+0.2⌉
+let bits:=a&b|c^d
+let set_single:=«1,2,3,»
+let diff:=left\right
+async function worker(value){let task:=spawn{return value} return await{task}}
+SRC
+
+my $current_syntax_tidy = Zuzu::Tidy->tidy(
+	$current_syntax_src,
+	filename => 'current-syntax.zzs'
+);
+like $current_syntax_tidy, qr/\Alet bytes := 'abc';\n/,
+	'keeps binary string delimiters';
+like $current_syntax_tidy, qr/\nlet bytes2 := 'a\\n';\n/,
+	'keeps escaped binary string content valid';
+like $current_syntax_tidy, qr/\nlet template := `Hello \{name\}`;\n/,
+	'keeps template delimiters valid';
+like $current_syntax_tidy, qr/\nlet yes := true;\n/,
+	'normalizes Unicode true literal to canonical boolean';
+like $current_syntax_tidy, qr/\nlet no := false;\n/,
+	'normalizes Unicode false literal to canonical boolean';
+like $current_syntax_tidy, qr/\nlet none := ∅;\n/,
+	'keeps empty set literal valid';
+like $current_syntax_tidy, qr/\nlet exists := data @\? "\/meta\/title";\n/,
+	'formats @? path operator spacing';
+like $current_syntax_tidy, qr/\nlet first := data @ "\/meta\/title";\n/,
+	'formats @ path operator spacing';
+like $current_syntax_tidy, qr/\nlet all := data @@ "\/meta\/\*";\n/,
+	'formats @@ path operator spacing';
+like $current_syntax_tidy, qr/\nlet floored := ⌊1\.8⌋;\n/,
+	'keeps simple floor bracket expression tight';
+like $current_syntax_tidy, qr/\nlet ceiled := ⌈value \+ 0\.2⌉;\n/,
+	'formats ceil bracket inner expression';
+like $current_syntax_tidy, qr/\nlet bits := a & b \| c \^ d;\n/,
+	'formats bitwise operator spacing';
+like $current_syntax_tidy, qr/\nlet set_single := « 1, 2, 3 »;\n/,
+	'removes trailing comma for single-line guillemet sets';
+like $current_syntax_tidy, qr/\nlet diff := left \\ right;\n/,
+	'formats set-difference operator spacing';
+like $current_syntax_tidy, qr/\nasync function worker \(value\) \{/,
+	'keeps async function syntax valid';
+like $current_syntax_tidy, qr/\n\tlet task := spawn \{/,
+	'formats spawn block keyword syntax';
+like $current_syntax_tidy, qr/\n\treturn await \{\n\t\ttask;\n\t\}/,
+	'formats await block keyword syntax';
+
 my $import_src = <<'SRC';
 from foo/bar import *;
 from extras/math try import thing;

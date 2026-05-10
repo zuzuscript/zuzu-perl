@@ -12,28 +12,6 @@ use Zuzu::Parser;
 binmode STDOUT, ':encoding(UTF-8)';
 binmode STDERR, ':encoding(UTF-8)';
 
-my %KEYWORD = map { $_ => 1 } qw(
-	let const function method static class trait extends with but
-	if else unless while for in return next last switch case default continue
-	true false null
-	and or xor nand not
-	eq ne gt ge lt le cmp eqi nei gti gei lti lei cmpi
-	mod abs sqrt floor ceil round int length uc lc typeof instanceof does can
-	union intersection subsetof supersetof equivalentof
-	from import as
-	try catch throw die do warn say print debug assert
-	new self super fn
-);
-
-my @OPS = sort { length($b) <=> length($a) } (
-	'<<<', '>>>', '{{', '}}', '<=>', '**', '==', '!=', '<=', '>=',
-	':=', '+=', '-=', '*=', '/=', '×=', '÷=', '**=', '_=', '?:=',
-	'++', '--', '->', '→', '@?', '@@', '@', '?:', '...', '⊂⊃', '<<', '>>', '«', '»',
-	'{', '}', '(', ')', '[', ']', ',', ';', ':', '.', '?', '_',
-	'×', '÷', '≠', '≤', '≥', '≡', '≢', '≶', '≷', '⋀', '⋁', '⊻',
-	'⊼', '¬', '∈', '∉', '⋃', '⋂', '⊂', '⊃', '∖', '\\',
-);
-
 my $source = read_source(@ARGV);
 my ( $body, $parsed, $parse_error ) = highlight($source);
 print render_html( $body, $parsed, $parse_error );
@@ -174,11 +152,14 @@ sub extract_lexeme {
 	if ( $type eq 'STRING' ) {
 		return ( $rest =~ /\A"""(?s:(?:\\.|(?!""").))*"""|\A"(?:\\.|[^"\\])*"?/u ) ? $& : '';
 	}
+	if ( $type eq 'BINARY_STRING' ) {
+		return ( $rest =~ /\A'''(?s:(?:\\.|(?!''').))*'''|\A'(?:\\.|[^'\\])*'?/u ) ? $& : '';
+	}
 	if ( $type eq 'TEMPLATE' ) {
-		return ( $rest =~ /\A`(?:\\.|[^`\\])*`/u ) ? $& : '';
+		return ( $rest =~ /\A```(?s:(?:\\.|(?!```).))*```|\A`(?:\\.|[^`\\])*`/u ) ? $& : '';
 	}
 	if ( $type eq 'REGEXP' ) {
-		return ( $rest =~ /\A\/(?:\\.|[^\/\\\n])+\/i?/u ) ? $& : '';
+		return ( $rest =~ /\A\/(?:\\.|[^\/\\\n])+\/(?:i|g|ig|gi)?/u ) ? $& : '';
 	}
 	if ( $type eq 'EMPTY_SET' ) {
 		return '∅';
@@ -199,7 +180,7 @@ sub class_for_token {
 	return 'boolean' if $type eq 'BOOL';
 	return 'null' if $type eq 'NULL';
 	return 'number' if $type eq 'NUMBER';
-	return 'string' if $type eq 'STRING' or $type eq 'TEMPLATE';
+	return 'string' if $type eq 'STRING' or $type eq 'BINARY_STRING' or $type eq 'TEMPLATE';
 	return 'regexp' if $type eq 'REGEXP';
 	return 'operator' if $type eq 'OP' or $type eq 'EMPTY_SET';
 	if ( $type eq 'IDENT' ) {

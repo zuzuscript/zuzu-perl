@@ -11,17 +11,26 @@ use Zuzu::Parser;
 use Zuzu::Token;
 
 my %BINARY_OP = map { $_ => 1 } qw(
-	+ - * / % ** _ == != < > <= >= <=>
-	&& || and or
+	+ - * / × ÷ ** mod
+	_ ~
+	= == != < > <= >= <=> eq ne gt ge lt le cmp eqi nei gti gei lti lei cmpi
+	and or xor nand
 	× ÷ ≠ ≤ ≥ ≡ ≢ ≶ ≷ ⋀ ⋁ ⊻ ⊼
-	∈ ∉ ⋃ ⋂ ⊂ ⊃ ∖ << >> <<< >>> « »
+	in ∈ ∉ union ⋃ intersection ⋂ subsetof ⊂ supersetof ⊃ equivalentof ⊂⊃ ∖
+	instanceof does can
+	& | ^
+	@ @? @@
 	:= ~= += -= *= /= ×= ÷= **= _= ?:=
 	=
 );
+$BINARY_OP{'\\'} = 1;
 
-my %UNARY_PREFIX_OP = map { $_ => 1 } qw( + - ! not ¬ ~ ++ -- );
-my %NO_SPACE_BEFORE = map { $_ => 1 } ( ',', ';', ')', ']', '}', '.', ':' );
-my %NO_SPACE_AFTER  = map { $_ => 1 } ( '(', '[', '{', '.' );
+my %UNARY_PREFIX_OP = map { $_ => 1 } qw(
+	+ - ! not ¬ ~ √ \ ++ --
+	abs sqrt floor ceil round int uc lc length typeof new
+);
+my %NO_SPACE_BEFORE = map { $_ => 1 } ( ',', ';', ')', ']', '}', '⌋', '⌉', '.', ':' );
+my %NO_SPACE_AFTER  = map { $_ => 1 } ( '(', '[', '{', '⌊', '⌈', '.' );
 my %CONTROL_KW = map { $_ => 1 } qw( if else while for switch catch unless );
 
 sub tidy {
@@ -121,7 +130,7 @@ sub _tidy_code_chunk {
 
 		my $close_kind = ( $val eq '}' and @brace_kind_stack ) ? $brace_kind_stack[-1] : 'block';
 
-		if ( $val eq '}' and $close_kind eq 'block' ) {
+		if ( $val eq '}' and ( $close_kind eq 'block' or $close_kind eq 'expr_block' ) ) {
 			if ( $line =~ /\S/ ) {
 				push @out_lines, _rstrip($line);
 				$line = '';
@@ -142,7 +151,10 @@ sub _tidy_code_chunk {
 
 		if ( $val eq '{' ) {
 			my $is_inline = _is_inline_brace( \@tokens, $i, \%pair_for );
-			push @brace_kind_stack, ( $is_inline ? 'inline' : 'block' );
+			my $kind = $is_inline ? 'inline'
+				: _is_expression_block_brace( \@tokens, $i ) ? 'expr_block'
+				: 'block';
+			push @brace_kind_stack, $kind;
 			$brace_depth++;
 			$inline_brace_depth++ if $is_inline;
 			if ( ! $is_inline ) {
@@ -166,7 +178,20 @@ sub _tidy_code_chunk {
 			$just_closed_inline = 1 if $kind eq 'inline';
 			$brace_depth-- if $brace_depth > 0;
 			$inline_brace_depth-- if $kind eq 'inline' and $inline_brace_depth > 0;
-			if ( $kind eq 'block' ) {
+			if ( $kind eq 'block' or $kind eq 'expr_block' ) {
+				if ( $kind eq 'expr_block' ) {
+					if ( $next and $next->is_OP(';') ) {
+						$line .= ';';
+						$i++;
+					}
+					elsif (
+						!$next
+						or ( $next->is_OP and $next->value eq '}' )
+						or _can_start_statement($next)
+					) {
+						$line .= ';';
+					}
+				}
 				if ( $next and $next->is_KW('else') ) {
 					push @out_lines, _rstrip($line);
 					$line = '';
@@ -309,17 +334,19 @@ sub _build_pair_map {
 
 	for my $i ( 0 .. $#$tokens ) {
 		my $v = defined $tokens->[$i]->value ? $tokens->[$i]->value : '';
-		if ( $v eq '(' or $v eq '[' or $v eq '{' ) {
+		if ( $v eq '(' or $v eq '[' or $v eq '{' or $v eq '⌊' or $v eq '⌈' ) {
 			push @stack, [ $v, $i ];
 			next;
 		}
-		if ( $v eq ')' or $v eq ']' or $v eq '}' ) {
+		if ( $v eq ')' or $v eq ']' or $v eq '}' or $v eq '⌋' or $v eq '⌉' ) {
 			next if ! @stack;
 			my $entry = pop @stack;
 			my ( $open, $open_i ) = @$entry;
 			next if ( $open eq '(' and $v ne ')' )
 				or ( $open eq '[' and $v ne ']' )
-				or ( $open eq '{' and $v ne '}' );
+				or ( $open eq '{' and $v ne '}' )
+				or ( $open eq '⌊' and $v ne '⌋' )
+				or ( $open eq '⌈' and $v ne '⌉' );
 			$pair{$open_i} = $i;
 			$pair{$i} = $open_i;
 		}
@@ -448,6 +475,22 @@ sub _need_space_before {
 		return 1;
 	}
 
+	if ( $pv eq '⌊' or $pv eq '⌈' ) {
+		my $open_i = $i - 1;
+		if ( defined $pair_for->{$open_i} and ! _paren_needs_inner_space( $tokens, $open_i, $pair_for->{$open_i} ) ) {
+			return 0;
+		}
+		return 1;
+	}
+
+	if ( $v eq '⌋' or $v eq '⌉' ) {
+		my $open_i = $pair_for->{$i};
+		if ( defined $open_i and ! _paren_needs_inner_space( $tokens, $open_i, $i ) ) {
+			return 0;
+		}
+		return 1;
+	}
+
 	if ( _is_binary_op( $tokens, $i ) ) {
 		return 1;
 	}
@@ -516,7 +559,7 @@ sub _is_binary_op {
 	my ( $tokens, $i ) = @_;
 	return 0 if $i < 0 or $i > $#$tokens;
 	my $tok = $tokens->[$i];
-	return 0 if ! $tok->is_OP;
+	return 0 if ! $tok->is_OP and ! $tok->is_KW;
 	my $v = $tok->value;
 	return 0 if ! $BINARY_OP{$v};
 	return 0 if _is_unary_operator( $tokens, $i );
@@ -527,7 +570,7 @@ sub _is_binary_op {
 sub _is_unary_operator {
 	my ( $tokens, $i ) = @_;
 	my $tok = $tokens->[$i];
-	return 0 if ! $tok->is_OP;
+	return 0 if ! $tok->is_OP and ! $tok->is_KW;
 	my $v = $tok->value;
 	return 0 if ! $UNARY_PREFIX_OP{$v};
 
@@ -586,7 +629,7 @@ sub _is_simple_token {
 	return 1 if $tok->is_NUMBER;
 	return 1 if $tok->is_BOOL;
 	return 1 if $tok->is_NULL;
-	if ( $tok->is_STRING ) {
+	if ( $tok->is_STRING or $tok->is_type('BINARY_STRING') or $tok->is_type('TEMPLATE') ) {
 		my $value = defined $tok->value ? $tok->value : '';
 		return length($value) <= 12 ? 1 : 0;
 	}
@@ -603,7 +646,7 @@ sub _needs_auto_semicolon {
 	if ( $next->is_KW and ( $next->value eq 'if' or $next->value eq 'unless' ) ) {
 		return 0;
 	}
-	return 0 if $next->is_OP and ( $next->value eq ';' or $next->value eq ')' or $next->value eq ']' or $next->value eq ',' or $next->value eq ':' );
+	return 0 if $next->is_OP and ( $next->value eq ';' or $next->value eq ')' or $next->value eq ']' or $next->value eq '⌋' or $next->value eq '⌉' or $next->value eq ',' or $next->value eq ':' );
 	return 0 if $paren_depth > 0 or $bracket_depth > 0;
 	return 0 if $inline_brace_depth > 0;
 	return 1 if $next->is_OP and $next->value eq '}' and _can_end_statement($tok);
@@ -630,7 +673,16 @@ sub _is_inline_brace {
 
 	if ( $prev->is_KW ) {
 		my $kw = $prev->value;
-		return 0 if $CONTROL_KW{$kw} or $kw eq 'class' or $kw eq 'trait' or $kw eq 'else' or $kw eq 'try' or $kw eq 'function' or $kw eq 'method';
+		return 0 if $CONTROL_KW{$kw}
+			or $kw eq 'class'
+			or $kw eq 'trait'
+			or $kw eq 'else'
+			or $kw eq 'try'
+			or $kw eq 'do'
+			or $kw eq 'await'
+			or $kw eq 'spawn'
+			or $kw eq 'function'
+			or $kw eq 'method';
 		return 1;
 	}
 
@@ -661,14 +713,31 @@ sub _is_inline_brace {
 	return 0;
 }
 
+sub _is_expression_block_brace {
+	my ( $tokens, $i ) = @_;
+	return 0 if $i <= 0;
+
+	my $prev = $tokens->[ $i - 1 ];
+	return 0 if !$prev->is_KW;
+
+	my $kw = $prev->value;
+	return 1 if $kw eq 'await' or $kw eq 'spawn' or $kw eq 'do';
+
+	return 0;
+}
+
 sub _can_end_statement {
 	my ( $tok ) = @_;
 	return 1 if $tok->is_IDENT or $tok->is_NUMBER or $tok->is_STRING or $tok->is_BOOL or $tok->is_NULL;
+	return 1 if $tok->is_type('BINARY_STRING');
 	return 1 if $tok->is_REGEXP or $tok->is_type('TEMPLATE') or $tok->is_EMPTY_SET;
 	return 1 if $tok->is_OP and (
 		$tok->value eq ')'
 		or $tok->value eq ']'
 		or $tok->value eq '}'
+		or $tok->value eq '⌋'
+		or $tok->value eq '⌉'
+		or $tok->value eq '»'
 		or $tok->value eq '>>'
 		or $tok->value eq '>>>'
 		or $tok->value eq '++'
@@ -682,7 +751,18 @@ sub _can_start_statement {
 	my ( $tok ) = @_;
 	return 1 if $tok->is_IDENT or $tok->is_KW;
 	return 1 if $tok->is_NUMBER or $tok->is_STRING or $tok->is_BOOL or $tok->is_NULL;
-	return 1 if $tok->is_OP and ( $tok->value eq '(' or $tok->value eq '[' or $tok->value eq '{' );
+	return 1 if $tok->is_REGEXP or $tok->is_EMPTY_SET;
+	return 1 if $tok->is_type('BINARY_STRING') or $tok->is_type('TEMPLATE');
+	return 1 if $tok->is_OP and (
+		$tok->value eq '('
+		or $tok->value eq '['
+		or $tok->value eq '{'
+		or $tok->value eq '<<'
+		or $tok->value eq '<<<'
+		or $tok->value eq '«'
+		or $tok->value eq '⌊'
+		or $tok->value eq '⌈'
+	);
 
 	return 0;
 }
@@ -692,12 +772,11 @@ sub _token_text {
 
 	if ( $tok->is_STRING ) {
 		my $value = defined $tok->value ? $tok->value : '';
-		$value =~ s/\\/\\\\/g;
-		$value =~ s/"/\\"/g;
-		$value =~ s/\n/\\n/g;
-		$value =~ s/\r/\\r/g;
-		$value =~ s/\t/\\t/g;
-		return '"' . $value . '"';
+		return '"' . _escape_literal( $value, '"' ) . '"';
+	}
+	if ( $tok->is_type('BINARY_STRING') ) {
+		my $value = defined $tok->value ? $tok->value : '';
+		return "'" . _escape_literal( $value, "'" ) . "'";
 	}
 	if ( $tok->is_BOOL ) {
 		return $tok->value ? 'true' : 'false';
@@ -712,14 +791,24 @@ sub _token_text {
 	}
 	if ( $tok->is_type('TEMPLATE') ) {
 		my $value = defined $tok->value ? $tok->value : '';
-		$value =~ s/`/\\`/g;
-		return '`' . $value . '`';
+		return '`' . _escape_literal( $value, '`' ) . '`';
 	}
 	if ( $tok->is_EMPTY_SET ) {
 		return '∅';
 	}
 
 	return defined $tok->value ? $tok->value : '';
+}
+
+sub _escape_literal {
+	my ( $value, $quote ) = @_;
+	$value =~ s/\\/\\\\/g;
+	$value =~ s/\Q$quote\E/\\$quote/g;
+	$value =~ s/\n/\\n/g;
+	$value =~ s/\r/\\r/g;
+	$value =~ s/\t/\\t/g;
+
+	return $value;
 }
 
 sub _visual_length {
@@ -969,10 +1058,11 @@ sub _strip_single_line_trailing_literal_commas {
 	my ( $src ) = @_;
 	my @lines = split /\n/, $src, -1;
 	for my $line ( @lines ) {
-		next if $line !~ /[\{\[<]/;
+		next if $line !~ /[\{\[<«]/;
 		$line =~ s/,\s*\}\}(?=\s*[;)\],}]|\s*\z)/ }}/g;
 		$line =~ s/,\s*\}(?=\s*[;)\],}]|\s*\z)/ }/g;
 		$line =~ s/,\s*\](?=\s*[;),\]}]|\s*\z)/ ]/g;
+		$line =~ s/,\s*»(?=\s*[;),\]}]|\s*\z)/ »/g;
 		$line =~ s/,\s*>>>(?=\s*[;),\]}]|\s*\z)/ >>>/g;
 		$line =~ s/,\s*>>(?=\s*[;),\]}]|\s*\z)/ >>/g;
 	}
@@ -989,11 +1079,12 @@ sub _normalize_split_sequence_literals {
 		'['   => ']',
 		'<<'  => '>>',
 		'<<<' => '>>>',
+		'«'   => '»',
 	);
 
 	for ( my $i = 0; $i <= $#lines; $i++ ) {
 		my $line = $lines[$i];
-		my ( $prefix, $open, $after_open ) = $line =~ /^(.*?(?::=|[\(\[,])\s*)(<<<|<<|\[)(.*)\z/;
+		my ( $prefix, $open, $after_open ) = $line =~ /^(.*?(?::=|[\(\[,])\s*)(<<<|<<|«|\[)(.*)\z/;
 		if ( ! defined $open ) {
 			push @out, $line;
 			next;

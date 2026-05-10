@@ -217,6 +217,17 @@ sub next_token {
 			return $self->_emit( 'OP', '_=', $line, $col );
 		}
 
+		if ( $ch eq '⊤' ) {
+			$self->_adv(1);
+
+			return $self->_emit('BOOL', 1, $line, $col);
+		}
+		if ( $ch eq '⊥' ) {
+			$self->_adv(1);
+
+			return $self->_emit('BOOL', 0, $line, $col);
+		}
+
 		# numbers: int/float
 		if ($ch =~ /[0-9]/) {
 			my $rest = substr($self->src, $self->pos);
@@ -429,6 +440,8 @@ sub next_token {
 			'⊂⊃',
 			'<<', '>>', '«', '»',
 			'{', '}', '(', ')', '[', ']', ',', ';', ':', '.', '?', '_', '@',
+			'+', '-', '*', '/', '<', '>', '=', '!', '~', '&', '|', '^',
+			'⌊', '⌋', '⌈', '⌉',
 		);
 		# plus unicode aliases you mentioned (not exhaustive)
 		push @ops, qw( × ÷ ≠ ≤ ≥ ≡ ≢ ≶ ≷ ⋀ ⋁ ⊻ ⊼ ¬ ∈ ∉ ⋃ ⋂ ⊂ ⊃ ∖ \ );

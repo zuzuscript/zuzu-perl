@@ -46,6 +46,19 @@ and exit with status zero.
 When fixing tests, prefer fixing the parser/runtime. Do not modify `.zzs`
 test scripts or fixture data. Modify `.zzm` modules only as a last resort.
 
+## Zuzu::Tidy
+
+`lib/Zuzu/Tidy.pm` formats ZuzuScript by tokenizing with `Zuzu::Lexer` and
+validating with `Zuzu::Parser`. When changing language syntax, parser
+behaviour, lexer token types, keywords, operators, delimiters, or literal
+forms, check whether `Zuzu::Tidy` also needs updates. In particular, keep its
+operator spacing tables, statement-boundary rules, paired-delimiter handling,
+and literal re-serialization in sync with the grammar in `docs/userguide`.
+
+Add or update `t/integration/tidy.t` coverage for any syntax that should be
+formatted or preserved. If the syntax also affects highlighted output, update
+`t/integration/highlight-lexer-parser.t` too.
+
 ## Style
 
 Follow the repository's existing Perl style. For ZuzuScript code, use tabs
