@@ -301,7 +301,7 @@ SRC
 is eval_src(<<'SRC'), 1, 'dict to_Array returns Pair objects';
 let d := { foo: 1 };
 let pairs := d.to_Array();
-( pairs[0] instanceof Pair ) and ( pairs[0].key() = "foo" );
+( pairs[0] instanceof Pair ) and ( pairs[0].key() eq "foo" );
 SRC
 
 is eval_src(<<'SRC'), 1, 'pairlist to_Array and callbacks use Pair objects';
@@ -312,7 +312,7 @@ let seen := "";
 pl.for_each_pair(
 	fn p -> seen := seen _ p.key() _ ","
 );
-ok_to_array and ( seen = "foo,bar," );
+ok_to_array and ( seen eq "foo,bar," );
 SRC
 
 done_testing;

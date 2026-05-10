@@ -11,6 +11,7 @@ use MIME::Base64 qw( encode_base64 );
 use Scalar::Util qw( blessed );
 use URI::Escape qw( uri_escape );
 
+use Zuzu::Error;
 use Zuzu::Util::NativeHelpers qw(
 	native_class
 	native_function
@@ -529,7 +530,11 @@ sub IMPORT {
 			my $status = $self->slots->{_response}{status} // 0;
 			my $reason = $self->slots->{_response}{reason} // '';
 			my $text = defined $message ? "$message" : 'HTTP request failed';
-			die "$text ($status $reason)";
+			die Zuzu::Error->new_runtime(
+				message => "$text ($status $reason)",
+				file => '<std/net/http>',
+				line => 0,
+			);
 		},
 	);
 

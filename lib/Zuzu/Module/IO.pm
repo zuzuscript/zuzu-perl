@@ -56,6 +56,17 @@ sub _to_path_tiny {
 	return path( defined $obj ? "$obj" : '' );
 }
 
+sub _has_named_temp_option {
+	my ( $args, $name ) = @_;
+
+	for ( my $i = 0; $i < @{$args} - 1; $i += 2 ) {
+		next if ref $args->[$i];
+		return 1 if uc( $args->[$i] ) eq $name;
+	}
+
+	return 0;
+}
+
 sub _new_path_object {
 	my ( $class_obj, $path_obj ) = @_;
 
@@ -746,6 +757,8 @@ sub IMPORT {
 		name => 'tempfile',
 		native => sub {
 			my ( $self, @args ) = @_;
+			push @args, UNLINK => 0
+				if not _has_named_temp_option( \@args, 'UNLINK' );
 			return _new_path_object( $path_class, tempfile( @args ) );
 		},
 	);
@@ -753,6 +766,8 @@ sub IMPORT {
 		name => 'tempdir',
 		native => sub {
 			my ( $self, @args ) = @_;
+			push @args, CLEANUP => 0
+				if not _has_named_temp_option( \@args, 'CLEANUP' );
 			return _new_path_object( $path_class, tempdir( @args ) );
 		},
 	);

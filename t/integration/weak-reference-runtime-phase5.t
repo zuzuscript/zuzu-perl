@@ -49,7 +49,7 @@ is eval_src(<<'SRC'), 1, 'weak slots store scalar values normally';
 class Box {}
 let weak_ref but weak;
 weak_ref := "scalar";
-let scalar_ok := weak_ref = "scalar";
+let scalar_ok := weak_ref eq "scalar";
 let owner := new Box();
 weak_ref := owner;
 owner := null;

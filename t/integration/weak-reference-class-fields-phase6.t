@@ -65,7 +65,7 @@ class Node {
 	let parent with get, set, has but weak;
 }
 let child := new Node( parent: "scalar" );
-child.has_parent() and child.get_parent() = "scalar";
+child.has_parent() and child.get_parent() eq "scalar";
 SRC
 
 is eval_src(<<'SRC'), 1, '__build__ sees constructor weak fields';

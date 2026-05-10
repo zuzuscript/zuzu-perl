@@ -23,11 +23,11 @@ let arr := [];
 arr.push_weak(owner);
 arr.unshift_weak("front");
 arr.set_weak( 2, owner );
-let alive := arr[1].get_label() = "owned"
-	and arr[2].get_label() = "owned";
+let alive := arr[1].get_label() eq "owned"
+	and arr[2].get_label() eq "owned";
 owner := null;
 alive
-	and arr[0] = "front"
+	and arr[0] eq "front"
 	and arr[1] ≡ null
 	and arr[2] ≡ null
 	and arr.length() = 3;
@@ -45,7 +45,7 @@ let gone := arr[0] ≡ null;
 let strong_owner := new Box( label: "strong" );
 arr.set( 0, strong_owner );
 strong_owner := null;
-gone and arr[0].get_label() = "strong";
+gone and arr[0].get_label() eq "strong";
 SRC
 
 is eval_src(<<'SRC'), 1, 'Dict weak methods keep dead entries present';
@@ -56,8 +56,8 @@ let owner := new Box( label: "owned" );
 let dict := {};
 dict.add_weak( "owner", owner );
 dict.set_weak( "other", owner );
-let alive := dict{"owner"}.get_label() = "owned"
-	and dict{"other"}.get_label() = "owned";
+let alive := dict{"owner"}.get_label() eq "owned"
+	and dict{"other"}.get_label() eq "owned";
 owner := null;
 alive
 	and dict.exists("owner")
@@ -76,9 +76,9 @@ let pairs := new PairList();
 pairs.add_weak( "owner", owner );
 pairs.set_weak( "other", owner );
 let all := pairs.get_all("owner");
-let alive := pairs{"owner"}.get_label() = "owned"
-	and pairs{"other"}.get_label() = "owned"
-	and all[0].get_label() = "owned";
+let alive := pairs{"owner"}.get_label() eq "owned"
+	and pairs{"other"}.get_label() eq "owned"
+	and all[0].get_label() eq "owned";
 all := null;
 owner := null;
 alive
@@ -122,11 +122,11 @@ set.add(owner);
 bag.add(owner);
 pairs.add( "owner", owner );
 owner := null;
-arr[0].get_label() = "owned"
-	and dict{"owner"}.get_label() = "owned"
+arr[0].get_label() eq "owned"
+	and dict{"owner"}.get_label() eq "owned"
 	and set.contains(arr[0])
 	and bag.contains(arr[0])
-	and pairs{"owner"}.get_label() = "owned";
+	and pairs{"owner"}.get_label() eq "owned";
 SRC
 
 is eval_src(<<'SRC'), 1, 'weak metadata survives collection rebuilds';
@@ -141,7 +141,7 @@ bag.add_weak(owner);
 set.add_weak(owner);
 pairs.add( "drop", "drop" );
 pairs.add_weak( "owner", owner );
-arr.remove( fn x -> x = "drop" );
+arr.remove( fn x -> x == "drop" );
 bag.remove("drop");
 set.remove("drop");
 pairs.remove("drop");
@@ -165,7 +165,7 @@ let pairs := new PairList();
 arr[1] := owner but weak;
 pairs.add( "drop", "drop" );
 pairs{"owner"} := owner but weak;
-arr.remove( fn x -> x = "drop" );
+arr.remove( fn x -> x == "drop" );
 pairs.remove("drop");
 let alive := arr[0] ≢ null and pairs{"owner"} ≢ null;
 owner := null;
@@ -183,8 +183,8 @@ let strong_owner := new Box( label: "strong" );
 arr[1] := strong_owner;
 weak_owner := null;
 strong_owner := null;
-arr.remove( fn x -> x = "drop" );
-arr[0].get_label() = "strong";
+arr.remove( fn x -> x == "drop" );
+arr[0].get_label() eq "strong";
 SRC
 
 done_testing;

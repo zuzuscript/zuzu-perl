@@ -26,14 +26,14 @@ SRC
 
 is eval_src(<<'SRC'), 1, 'string coercion converts null and booleans explicitly';
 ( ( null _ "x" ) eq "x" )
-	and ( ( true _ "" ) eq "1" )
-	and ( ( false _ "" ) eq "0" );
+	and ( ( true _ "" ) eq "true" )
+	and ( ( false _ "" ) eq "false" );
 SRC
 
 is eval_src(<<'SRC'), 1, 'truthiness for scalars and composites is stable';
 ( ( null ? 1 : 0 ) = 0 )
 	and ( ( "" ? 1 : 0 ) = 0 )
-	and ( ( "0" ? 1 : 0 ) = 0 )
+	and ( ( "0" ? 1 : 0 ) = 1 )
 	and ( ( 0 ? 1 : 0 ) = 0 )
 	and ( ( [] ? 1 : 0 ) = 0 )
 	and ( ( {} ? 1 : 0 ) = 0 )

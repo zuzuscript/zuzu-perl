@@ -2,10 +2,10 @@ use Test2::V0;
 
 use File::Find qw( find );
 use File::Spec;
+use IPC::Run3 qw( run3 );
 use TAP::Parser;
 
 use Zuzu::Parser;
-use Zuzu::Runtime;
 use Zuzu::Test::ZPathFacelessPortDiagnostics qw(
 	format_summary_lines
 	summarize_failed_queries
@@ -21,6 +21,7 @@ my @runtime_lib = (
 	File::Spec->catdir( $repo_root, 'stdlib', 'test-modules' ),
 	File::Spec->catdir( $repo_root, 'stdlib', 'modules' ),
 );
+my $zuzu_bin = File::Spec->catfile( $repo_root, 'bin', 'zuzu' );
 
 my @zzs_files;
 find(
@@ -68,50 +69,88 @@ for my $ztest_path ( @zzs_files ) {
 		}
 		pass 'parsed ztest source';
 
-		my $runtime = Zuzu::Runtime->new( lib => [ @runtime_lib ] );
-		my $tap_out = '';
-		my $stderr_out = '';
+		my $run = _run_ztest_cli($ztest_path);
 
-		my $ran_ok = eval {
-			local *STDOUT;
-			local *STDERR;
-			open STDOUT, '>:encoding(UTF-8)', \$tap_out
-				or die "Could not capture STDOUT for $display_name: $!";
-			open STDERR, '>:encoding(UTF-8)', \$stderr_out
-				or die "Could not capture STDERR for $display_name: $!";
-			$runtime->evaluate($ast);
-			1;
-		};
-
-		if ( not $ran_ok ) {
+		if ( not $run->{ok} ) {
 			fail 'executed ztest script';
-			diag $@;
-			if ( length $stderr_out ) {
+			if ( defined $run->{error} and $run->{error} ne '' ) {
+				diag $run->{error};
+			}
+			if ( length $run->{stderr} ) {
 				diag "stderr from $display_name:";
-				diag $stderr_out;
+				diag $run->{stderr};
 			}
 			_emit_faceless_port_diagnostics(
 				$display_name,
 				{
-					failed_queries => _failed_queries_from_tap_text( $tap_out ),
+					failed_queries =>
+						_failed_queries_from_tap_text( $run->{stdout} ),
 				},
 			);
 			return;
 		}
 		pass 'executed ztest script';
 
-		if ( length $stderr_out ) {
+		if ( length $run->{stderr} ) {
 			note "stderr from $display_name:";
-			note $stderr_out;
+			note $run->{stderr};
 		}
 
-		my $tap_summary = _assert_valid_tap( $display_name, $tap_out );
+		my $tap_summary = _assert_valid_tap( $display_name, $run->{stdout} );
 		_emit_faceless_port_diagnostics( $display_name, $tap_summary );
+	};
+}
+
+sub _run_ztest_cli {
+	my ( $ztest_path ) = @_;
+
+	my @cmd = (
+		$^X,
+		$zuzu_bin,
+		( map { ( '-I', $_ ) } @runtime_lib ),
+		$ztest_path,
+	);
+	my $stdout = '';
+	my $stderr = '';
+	my $ran = eval {
+		run3( \@cmd, \undef, \$stdout, \$stderr );
+		1;
+	};
+	my $status = $?;
+	my $error = '';
+	if ( not $ran ) {
+		$error = "Could not run ztest script: $@";
+	}
+	elsif ( $status != 0 ) {
+		my $exit_code = $status >> 8;
+		my $signal = $status & 127;
+		$error = "ztest script exited with status $exit_code";
+		$error .= " after signal $signal" if $signal;
+	}
+
+	return {
+		ok => $ran && $status == 0 ? 1 : 0,
+		stdout => $stdout,
+		stderr => $stderr,
+		error => $error,
+		status => $status,
 	};
 }
 
 sub _assert_valid_tap {
 	my ( $display_name, $tap_out ) = @_;
+
+	if ( not defined $tap_out or $tap_out eq '' ) {
+		fail 'ztest produced TAP tests';
+		fail 'ztest TAP plan is valid';
+		fail 'ztest TAP stream has no parser problems';
+		return {
+			tests_seen => 0,
+			failed_queries => [],
+			has_problems => 1,
+			skip_all => 0,
+		};
+	}
 
 	my $tap_parser = TAP::Parser->new( { source => \$tap_out } );
 	my $tests_seen = 0;

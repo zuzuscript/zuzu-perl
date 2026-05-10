@@ -26,13 +26,13 @@ pairs.add_weak( "owner", owner );
 let live := ( arr == [ owner ] )
 	and ( dict == { owner: owner } )
 	and ( pairs == {{ owner: owner }} )
-	and typeof arr[0] = "Box";
+	and typeof arr[0] eq "Box";
 owner := null;
 live
 	and ( arr == [ null ] )
 	and ( dict == { owner: null } )
 	and ( pairs == {{ owner: null }} )
-	and typeof arr[0] = "Null";
+	and typeof arr[0] eq "Null";
 SRC
 
 is eval_src(<<'SRC'), 1, 'object_slots and std/dump expose resolved values';
@@ -52,7 +52,7 @@ let dead_slots := object_slots(holder);
 let text := Dumper.dump( holder, { sort_keys: true } );
 live
 	and dead_slots{"parent"} ≡ null
-	and text = "new Holder(parent:null)";
+	and text eq "new Holder(parent:null)";
 SRC
 
 is eval_src(<<'SRC'), 1, 'marshal preserves live weak collection edges';
@@ -120,7 +120,7 @@ let dict := {};
 arr.push_weak("scalar");
 dict.set_weak( "owner", "scalar" );
 let loaded := load( dump([ arr, dict ]) );
-loaded[0][0] = "scalar" and loaded[1]{"owner"} = "scalar";
+loaded[0][0] eq "scalar" and loaded[1]{"owner"} eq "scalar";
 SRC
 
 done_testing;
