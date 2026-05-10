@@ -32,15 +32,20 @@ my @runtimes = (
 	{
 		name => 'Rust',
 		cmd  => [
-			executable( qw( extras zuzu-rust target debug zuzu-rust ) )
+			$ENV{ZUZU_RUST_BIN}
+				// executable( qw( extras zuzu-rust target debug zuzu-rust ) )
 				// executable( qw( extras zuzu-rust target release zuzu-rust ) )
 		],
 	},
 	{
 		name => 'JS/Node',
-		cmd  => command_available('node')
-			? [ 'node', File::Spec->catfile( $repo_root, qw( extras zuzu-js bin zuzu-js ) ) ]
-			: undef,
+		cmd  => do {
+			my $js_bin = $ENV{ZUZU_JS_BIN}
+				// File::Spec->catfile( $repo_root, qw( extras zuzu-js bin zuzu-js ) );
+			command_available('node') && -f $js_bin
+				? [ 'node', $js_bin ]
+				: undef;
+		},
 	},
 );
 
@@ -48,8 +53,8 @@ sub run_zuzu {
 	my ( $runtime, @args ) = @_;
 	my @cmd = (
 		@{ $runtime->{cmd} },
-		'-Imodules',
-		'-It/modules',
+		'-Istdlib/modules',
+		'-Istdlib/test-modules',
 		@args,
 	);
 	my ( $stdout, $stderr ) = ( '', '' );
@@ -75,13 +80,12 @@ sub command_text {
 }
 
 my @zuzuzoo_tests = qw(
-	t/ztests/std/zuzuzoo/archive.zzs
-	t/ztests/std/zuzuzoo/paths.zzs
-	t/ztests/std/zuzuzoo/install-windows.zzs
-	t/ztests/std/zuzuzoo/metadata.zzs
-	t/ztests/std/zuzuzoo/queries.zzs
-	t/ztests/std/zuzuzoo/verify.zzs
-	t/ztests/std/zuzuzoo/source.zzs
+	stdlib/tests/std/zuzuzoo/paths.zzs
+	stdlib/tests/std/zuzuzoo/install-windows.zzs
+	stdlib/tests/std/zuzuzoo/metadata.zzs
+	stdlib/tests/std/zuzuzoo/queries.zzs
+	stdlib/tests/std/zuzuzoo/verify.zzs
+	stdlib/tests/std/zuzuzoo/source.zzs
 );
 
 my ( $import_fh, $import_script ) = tempfile(
@@ -100,7 +104,9 @@ close $import_fh;
 
 for my $runtime ( @runtimes ) {
 	if ( !defined $runtime->{cmd} || !defined $runtime->{cmd}[0] ) {
-		skip $runtime->{name} . ' binary is unavailable', 1 + @zuzuzoo_tests;
+		SKIP: {
+			skip $runtime->{name} . ' binary is unavailable', 1 + @zuzuzoo_tests;
+		}
 		next;
 	}
 
@@ -186,17 +192,23 @@ close $http_fh;
 
 my ( $server_pid, $base_url ) = start_redirect_server();
 if ( !$server_pid ) {
-	skip 'local sockets unavailable for redirect fixture', scalar @runtimes;
+	SKIP: {
+		skip 'local sockets unavailable for redirect fixture', scalar @runtimes;
+	}
 }
 else {
 	my $tmp = tempdir( CLEANUP => 1 );
 	for my $runtime ( @runtimes ) {
 		if ( !defined $runtime->{cmd} || !defined $runtime->{cmd}[0] ) {
-			skip $runtime->{name} . ' binary is unavailable', 1;
+			SKIP: {
+				skip $runtime->{name} . ' binary is unavailable', 1;
+			}
 			next;
 		}
 		if ( $runtime->{name} eq 'JS/Node' && !command_available('curl') ) {
-			skip 'curl is unavailable for JS/Node synchronous HTTP transport', 1;
+			SKIP: {
+				skip 'curl is unavailable for JS/Node synchronous HTTP transport', 1;
+			}
 			next;
 		}
 		my $download = File::Spec->catfile(

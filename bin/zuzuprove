@@ -28,7 +28,7 @@ function _paint ( String text, String tone, Boolean colour_enabled ) {
 }
 
 function _usage () {
-	say( "Usage: bin/zuzu -Imodules bin/zuzuprove -- [--verbose] [--no-colour] <directory>" );
+	say( "Usage: bin/zuzu -Istdlib/modules bin/zuzuprove -- [--verbose] [--no-colour] <directory>" );
 }
 
 function _collect_zzs ( Path dir, Array files ) {
@@ -125,7 +125,7 @@ function __main__ ( argv ) {
 	for ( let file in files ) {
 		let run := Proc.run(
 			"bin/zuzu",
-			[ "-Imodules", "-It/modules", file.to_String() ],
+			[ "-Istdlib/modules", "-Istdlib/test-modules", file.to_String() ],
 			{ capture_stdout: true, capture_stderr: true },
 		);
 		let summary := parse( run{stdout} );

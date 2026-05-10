@@ -71,8 +71,8 @@ if ( $pid == 0 ) {
 
 my $runtime = Zuzu::Runtime->new(
 	lib => [
-		File::Spec->catdir( $repo_root, 't', 'modules' ),
-		File::Spec->catdir( $repo_root, 'modules' ),
+		File::Spec->catdir( $repo_root, 'stdlib', 'test-modules' ),
+		File::Spec->catdir( $repo_root, 'stdlib', 'modules' ),
 	],
 );
 my $parser = Zuzu::Parser->new;

@@ -119,7 +119,7 @@ like(
 	local *Zuzu::Web::PSGI::CLI::_run_plack = sub { return };
 
 	my ( $exit ) = capture_run(
-		'-It/modules',
+		'-Istdlib/test-modules',
 		'--deny=fs,net',
 		'--denymodule=perl,std/io',
 		'-d',
@@ -128,7 +128,7 @@ like(
 
 	is( $exit, 0, 'Zuzu options are accepted' );
 	is( $captured{script}, $valid_script, 'script is passed to app builder' );
-	is( $captured{lib}, [ 't/modules' ], 'include paths are passed through' );
+	is( $captured{lib}, [ 'stdlib/test-modules' ], 'include paths are passed through' );
 	is( $captured{deny}, [ 'fs', 'net' ], 'deny values are normalized' );
 	is(
 		$captured{deny_modules},

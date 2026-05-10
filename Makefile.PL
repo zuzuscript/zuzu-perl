@@ -5,7 +5,7 @@ use warnings;
 use ExtUtils::MakeMaker;
 use File::ShareDir::Install;
 
-install_share dist => 'modules';
+install_share dist => 'stdlib/modules';
 
 WriteMakefile(
 	NAME => 'Zuzu',

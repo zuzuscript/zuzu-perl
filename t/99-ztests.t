@@ -12,10 +12,14 @@ use Zuzu::Test::ZPathFacelessPortDiagnostics qw(
 );
 
 my $repo_root = File::Spec->rel2abs( File::Spec->catdir( File::Spec->curdir ) );
-my $ztests_dir = File::Spec->catdir( $repo_root, 't', 'ztests' );
+my @ztests_dirs = (
+	File::Spec->catdir( $repo_root, 'languagetests' ),
+	File::Spec->catdir( $repo_root, 'stdlib', 'tests' ),
+);
 my @runtime_lib = (
 	File::Spec->catdir( $repo_root, 't', 'modules' ),
-	File::Spec->catdir( $repo_root, 'modules' ),
+	File::Spec->catdir( $repo_root, 'stdlib', 'test-modules' ),
+	File::Spec->catdir( $repo_root, 'stdlib', 'modules' ),
 );
 
 my @zzs_files;
@@ -28,7 +32,7 @@ find(
 			push @zzs_files, $File::Find::name;
 		},
 	},
-	$ztests_dir,
+	grep { -d $_ } @ztests_dirs,
 );
 @zzs_files = sort @zzs_files;
 
@@ -40,6 +44,19 @@ for my $ztest_path ( @zzs_files ) {
 	my $display_name = File::Spec->abs2rel( $ztest_path, $repo_root );
 
 	subtest $display_name => sub {
+		if (
+			$display_name eq 'languagetests/javascript.zzs'
+			or $display_name eq 'stdlib/tests/javascript.zzs'
+		) {
+			plan skip_all => 'Perl runtime does not support the javascript module';
+		}
+		if (
+			$display_name eq 'stdlib/tests/std/db/_mysql.zzs'
+			or $display_name eq 'stdlib/tests/std/db/_postgresql.zzs'
+		) {
+			plan skip_all => 'external database author test';
+		}
+
 		my $source = _slurp_utf8( $ztest_path );
 		ok defined $source, 'loaded ztest source';
 
@@ -164,7 +181,7 @@ sub _assert_valid_tap {
 sub _emit_faceless_port_diagnostics {
 	my ( $display_name, $tap_summary ) = @_;
 
-	return if $display_name ne 't/ztests/std/zpath-faceless-port.zzs';
+	return if $display_name ne 'stdlib/tests/std/path/z.zzs';
 	return if not defined $tap_summary;
 
 	my $failed_queries = $tap_summary->{failed_queries};

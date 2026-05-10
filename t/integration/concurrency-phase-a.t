@@ -13,7 +13,7 @@ sub run_zuzu {
 	my ( $source ) = @_;
 
 	my $ast = $parser->parse( $source, '<concurrency-phase-a>' );
-	my $runtime = Zuzu::Runtime->new( lib => [ 'modules' ] );
+	my $runtime = Zuzu::Runtime->new( lib => [ 'stdlib/modules' ] );
 	my $out = '';
 	my $ok = eval {
 		local *STDOUT;

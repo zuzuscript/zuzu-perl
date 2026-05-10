@@ -51,10 +51,10 @@ sub module_ids_from_ztests {
 
 my $repo_root = File::Spec->rel2abs( File::Spec->catdir( File::Spec->curdir ) );
 my $module_ids = module_ids_from_std_tree(
-	File::Spec->catdir( $repo_root, 'modules', 'std' ),
+	File::Spec->catdir( $repo_root, 'stdlib', 'modules', 'std' ),
 );
 my $ztest_ids = module_ids_from_ztests(
-	File::Spec->catdir( $repo_root, 't', 'ztests', 'std' ),
+	File::Spec->catdir( $repo_root, 'stdlib', 'tests', 'std' ),
 );
 
 my %has_ztest = map { $_ => 1 } @{$ztest_ids};
@@ -64,7 +64,7 @@ is scalar @missing_contracts, 0,
 
 my $parser = Zuzu::Parser->new;
 for my $module_id ( @{$module_ids} ) {
-	my $runtime = Zuzu::Runtime->new( lib => [ 'modules', 't/modules' ] );
+	my $runtime = Zuzu::Runtime->new( lib => [ 'stdlib/modules', 'stdlib/test-modules' ] );
 	my $ast = $parser->parse(
 		"from $module_id import *;",
 		"test3-import-$module_id.zzs",
@@ -73,7 +73,7 @@ for my $module_id ( @{$module_ids} ) {
 		"module import smoke: $module_id" );
 }
 
-my $runtime = Zuzu::Runtime->new( lib => [ 'modules', 't/modules' ] );
+my $runtime = Zuzu::Runtime->new( lib => [ 'stdlib/modules', 'stdlib/test-modules' ] );
 
 my $tmp = tempdir( CLEANUP => 1 );
 my $listen = IO::Socket::INET->new(

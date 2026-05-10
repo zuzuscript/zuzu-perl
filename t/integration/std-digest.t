@@ -10,7 +10,7 @@ sub eval_src {
 	my ( $src ) = @_;
 	my $runtime = Zuzu::Runtime->new(
 		lib => [
-			File::Spec->catdir( File::Spec->curdir, "modules" ),
+			File::Spec->catdir( File::Spec->curdir, "stdlib", "modules" ),
 		],
 	);
 	my $ast = $parser->parse( $src, 'std-digest.zzs' );

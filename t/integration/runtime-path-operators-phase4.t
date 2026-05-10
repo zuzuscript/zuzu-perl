@@ -9,7 +9,7 @@ my $parser = Zuzu::Parser->new;
 sub eval_src {
 	my ( $src ) = @_;
 	my $runtime = Zuzu::Runtime->new(
-		lib => [ File::Spec->catdir( '.', 'modules' ) ],
+		lib => [ File::Spec->catdir( '.', 'stdlib', 'modules' ) ],
 	);
 	my $ast = $parser->parse( $src, 'runtime-path-operators-phase4.zzs' );
 	return $runtime->evaluate($ast);

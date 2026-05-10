@@ -8,7 +8,7 @@ my $parser = Zuzu::Parser->new;
 
 sub eval_src {
 	my ( $src ) = @_;
-	my $runtime = Zuzu::Runtime->new( lib => [ 'modules', 't/modules' ] );
+	my $runtime = Zuzu::Runtime->new( lib => [ 'stdlib/modules', 'stdlib/test-modules' ] );
 	my $ast = $parser->parse( $src, 'weak-reference-marshal-phase8.zzs' );
 
 	return $runtime->evaluate($ast);

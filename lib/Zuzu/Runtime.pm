@@ -97,13 +97,25 @@ has 'builtin' => ( is => 'rw', default => sub {
 sub _dist_modules_dir {
 	my $dir = eval { dist_dir('Zuzu') };
 	return undef if !defined $dir or $dir eq '';
+	return $dir if -d File::Spec->catdir( $dir, 'std' );
 	return File::Spec->catdir( $dir, 'modules' );
+}
+
+sub _checkout_modules_dir {
+	my $repo = Cwd::abs_path(
+		File::Spec->catdir( dirname(__FILE__), '..', '..' )
+	);
+	return undef if not defined $repo;
+	my $modules = File::Spec->catdir( $repo, 'stdlib', 'modules' );
+	return $modules if -d $modules;
+	return undef;
 }
 
 our @DEFAULT_LIB = do {
 	my @paths = (
 		( $ENV{HOME} ? ( $ENV{HOME} . '/.zuzu/modules' ) : () ),
 		'/var/lib/zuzu/modules',
+		( _checkout_modules_dir() // () ),
 		( _dist_modules_dir() // () ),
 	);
 

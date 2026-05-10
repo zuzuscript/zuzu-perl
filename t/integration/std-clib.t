@@ -7,8 +7,8 @@ use Zuzu::Runtime;
 
 my $repo_root = File::Spec->rel2abs( File::Spec->curdir );
 my @runtime_lib = (
-	File::Spec->catdir( $repo_root, 't', 'modules' ),
-	File::Spec->catdir( $repo_root, 'modules' ),
+	File::Spec->catdir( $repo_root, 'stdlib', 'test-modules' ),
+	File::Spec->catdir( $repo_root, 'stdlib', 'modules' ),
 );
 my $parser = Zuzu::Parser->new;
 

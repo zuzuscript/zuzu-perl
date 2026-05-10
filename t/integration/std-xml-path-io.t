@@ -4,7 +4,7 @@ use Zuzu::Parser;
 use Zuzu::Runtime;
 
 my $parser = Zuzu::Parser->new;
-my $runtime = Zuzu::Runtime->new( lib => [ 'modules', 't/modules' ] );
+my $runtime = Zuzu::Runtime->new( lib => [ 'stdlib/modules', 'stdlib/test-modules' ] );
 my $ast = $parser->parse(
 	<<'SRC',
 from std/data/xml import XML;

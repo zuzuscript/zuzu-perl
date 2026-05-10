@@ -91,7 +91,7 @@ for my $case ( @weakable ) {
 	is resolve_weak_value($value), $value, "$name resolves unchanged";
 }
 
-my $runtime = Zuzu::Runtime->new( lib => [ 'modules', 't/modules' ] );
+my $runtime = Zuzu::Runtime->new( lib => [ 'stdlib/modules', 'stdlib/test-modules' ] );
 my $task = eval {
 	my $parser = Zuzu::Parser->new;
 	my $ast = $parser->parse(

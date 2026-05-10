@@ -106,7 +106,7 @@ sub destroy {
 
 package main;
 
-my $modules = File::Spec->rel2abs('modules');
+my $modules = File::Spec->rel2abs( File::Spec->catdir( 'stdlib', 'modules' ) );
 
 is(
 	zuzu_eval(

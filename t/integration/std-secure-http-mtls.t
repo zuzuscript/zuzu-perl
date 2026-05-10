@@ -89,8 +89,8 @@ subtest 'Perl std/net/http mTLS' => sub {
 	my $ast = $parser->parse( $script, 'phase12-mtls.zzs' );
 	my $runtime = Zuzu::Runtime->new(
 		lib => [
-			File::Spec->catdir( $repo_root, 't', 'modules' ),
-			File::Spec->catdir( $repo_root, 'modules' ),
+			File::Spec->catdir( $repo_root, 'stdlib', 'test-modules' ),
+			File::Spec->catdir( $repo_root, 'stdlib', 'modules' ),
 		],
 	);
 	my $ok = eval {
@@ -114,22 +114,30 @@ close $fh;
 my @cli = (
 	[
 		'JS/Node std/net/http mTLS',
-		[ 'node', File::Spec->catfile( $repo_root, qw( extras zuzu-js bin zuzu-js ) ), $path ],
+		_runtime_cmd(
+			$ENV{ZUZU_JS_BIN},
+			File::Spec->catfile( $repo_root, qw( extras zuzu-js bin zuzu-js ) ),
+			sub { [ 'node', $_[0], $path ] },
+		),
 	],
 	[
 		'Rust std/net/http mTLS',
-		[ File::Spec->catfile(
-			$repo_root,
-			qw( extras zuzu-rust target debug zuzu-rust ),
-		), $path ],
+		_runtime_cmd(
+			$ENV{ZUZU_RUST_BIN},
+			File::Spec->catfile(
+				$repo_root,
+				qw( extras zuzu-rust target debug zuzu-rust ),
+			),
+			sub { [ $_[0], $path ] },
+		),
 	],
 );
 
 for my $case ( @cli ) {
 	my ( $name, $cmd ) = @{ $case };
 	subtest $name => sub {
-		skip_all "$cmd->[0] is not available"
-			if not _command_available( $cmd->[0] );
+		skip_all "$name runtime is not available"
+			if not defined $cmd;
 		my $stdout = '';
 		my $stderr = '';
 		run3 $cmd, undef, \$stdout, \$stderr;
@@ -146,6 +154,15 @@ waitpid( $pid, 0 );
 unlink $path;
 
 done_testing;
+
+sub _runtime_cmd {
+	my ( $env_path, $default_path, $builder ) = @_;
+	my $runtime = defined $env_path && $env_path ne ''
+		? $env_path
+		: $default_path;
+	return undef if not defined $runtime or not -f $runtime;
+	return $builder->($runtime);
+}
 
 sub _script {
 	my ( $url, $ca, $cert, $key ) = @_;
@@ -168,6 +185,7 @@ let resp := await { ua.get_async(url) };
 if ( not resp.success() ) {
 	diag( resp.reason() );
 }
+
 is( 0 + resp.status(), 200, "user-agent TLS identity succeeds" );
 is( resp.content(), "mtls-ok\\n", "mTLS response body is returned" );
 

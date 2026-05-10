@@ -17,6 +17,10 @@ my $faceless_script = File::Spec->catfile(
 	'_faceless.zzs',
 );
 
+if ( not -f $faceless_script ) {
+	plan skip_all => 'faceless ztest fixture is not present in this split checkout';
+}
+
 ok( -f $faceless_script, 'faceless ztest fixture exists' );
 
 my $cmd = join(
@@ -24,8 +28,8 @@ my $cmd = join(
 	$^X,
 	'-Ilib',
 	'bin/zuzu',
-	'-Imodules',
-	'-It/modules',
+	'-Istdlib/modules',
+	'-Istdlib/test-modules',
 	$faceless_script,
 	'2>&1',
 );

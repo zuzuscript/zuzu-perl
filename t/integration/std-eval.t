@@ -2,7 +2,7 @@ use Test2::V0;
 
 use Zuzu qw( zuzu_eval );
 
-my $test_lib = [ 't/modules', 'modules' ];
+my $test_lib = [ 'stdlib/test-modules', 'stdlib/modules' ];
 
 is(
 	zuzu_eval( <<'ZZS' ),
