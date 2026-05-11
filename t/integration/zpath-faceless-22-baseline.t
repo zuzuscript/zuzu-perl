@@ -27,7 +27,7 @@ my $cmd = join(
 	' ',
 	$^X,
 	'-Ilib',
-	'bin/zuzu',
+	'bin/zuzu.pl',
 	'-Istdlib/modules',
 	'-Istdlib/test-modules',
 	$faceless_script,

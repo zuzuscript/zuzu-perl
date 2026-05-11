@@ -105,7 +105,7 @@ like(
 	my ( $exit, undef, $stderr ) = capture_run( '-h' );
 
 	is( $exit, 0, 'help exits 0' );
-	like( $stderr, qr/Usage: zuzu-plackup/, 'help prints usage' );
+	like( $stderr, qr/Usage: zuzu-plackup\.pl/, 'help prints usage' );
 }
 
 {

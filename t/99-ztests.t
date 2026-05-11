@@ -21,7 +21,7 @@ my @runtime_lib = (
 	File::Spec->catdir( $repo_root, 'stdlib', 'test-modules' ),
 	File::Spec->catdir( $repo_root, 'stdlib', 'modules' ),
 );
-my $zuzu_bin = File::Spec->catfile( $repo_root, 'bin', 'zuzu' );
+my $zuzu_bin = File::Spec->catfile( $repo_root, 'bin', 'zuzu.pl' );
 
 my @zzs_files;
 find(

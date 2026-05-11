@@ -75,7 +75,7 @@ close $fh;
 my $stdout = '';
 my $stderr = '';
 my $ok = run(
-	[ $^X, File::Spec->catfile( $repo_root, 'bin', 'zuzu' ), $script ],
+	[ $^X, File::Spec->catfile( $repo_root, 'bin', 'zuzu.pl' ), $script ],
 	'>',
 	\$stdout,
 	'2>',

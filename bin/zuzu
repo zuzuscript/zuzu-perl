@@ -1,13 +1,17 @@
-#!/usr/bin/env perl
+#!/bin/sh
+set -eu
 
-use utf8;
-use strict;
-use warnings;
+if [ "${ZUZU+x}" = x ] && [ -n "$ZUZU" ]; then
+  export ZUZU
+  exec "$ZUZU" "$@"
+fi
 
-use FindBin qw( $Bin );
-use lib "$Bin/../lib";
+for ZUZU in zuzu-rust zuzu.pl zuzu-js; do
+  if command -v "$ZUZU" >/dev/null 2>&1; then
+    export ZUZU
+    exec "$ZUZU" "$@"
+  fi
+done
 
-use Zuzu::CLI;
-
-my $exit_code = Zuzu::CLI::run(@ARGV);
-exit $exit_code;
+echo "zuzu: no ZuzuScript implementation found in PATH" >&2
+exit 127

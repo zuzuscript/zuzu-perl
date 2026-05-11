@@ -283,8 +283,8 @@ like $tidied, qr/\n\t\}\n\telse \{\n/s,
 	'does not cuddle else';
 
 my $repo_root = File::Spec->rel2abs( File::Spec->catdir( File::Spec->curdir ) );
-my $bin = File::Spec->catfile( $repo_root, 'bin', 'zuzu-tidy' );
-ok -x $bin, 'bin/zuzu-tidy exists and is executable';
+my $bin = File::Spec->catfile( $repo_root, 'bin', 'zuzu-tidy.pl' );
+ok -x $bin, 'bin/zuzu-tidy.pl exists and is executable';
 
 my $tmpdir = tempdir( CLEANUP => 1 );
 my $script = File::Spec->catfile( $tmpdir, 'cli.zzs' );
@@ -296,13 +296,13 @@ close $fh;
 my $cmd = "$^X $bin $script";
 my $output = qx{$cmd};
 my $exit = $? >> 8;
-is $exit, 0, 'zuzu-tidy CLI exits successfully';
-is $output, "let n := 1;\n", 'zuzu-tidy CLI prints tidied output';
+is $exit, 0, 'zuzu-tidy.pl CLI exits successfully';
+is $output, "let n := 1;\n", 'zuzu-tidy.pl CLI prints tidied output';
 
 my $in_place_cmd = "$^X $bin --in-place $script";
 my $in_place_output = qx{$in_place_cmd};
 my $in_place_exit = $? >> 8;
-is $in_place_exit, 0, 'zuzu-tidy --in-place exits successfully';
+is $in_place_exit, 0, 'zuzu-tidy.pl --in-place exits successfully';
 is $in_place_output, '', '--in-place does not print output';
 
 open my $rfh, '<:encoding(UTF-8)', $script

@@ -531,7 +531,7 @@ is $builtin_runtime->call( 'proc_import_onsignal_callback_runs' ), 1,
 	'builtin Proc module onsignal invokes callback for delivered signal';
 
 my $repo_root = File::Spec->rel2abs( File::Spec->catdir( File::Spec->curdir ) );
-my $zuzu_bin = File::Spec->catfile( $repo_root, 'bin', 'zuzu' );
+my $zuzu_bin = File::Spec->catfile( $repo_root, 'bin', 'zuzu.pl' );
 my $exit_script = File::Spec->catfile( $tmp, 'proc-exit.zzs' );
 write_utf8(
 	$exit_script,

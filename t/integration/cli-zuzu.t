@@ -6,9 +6,9 @@ use File::Spec;
 use File::Temp qw( tempdir );
 
 my $repo_root = File::Spec->rel2abs( File::Spec->catdir( File::Spec->curdir ) );
-my $zuzu_bin = File::Spec->catfile( $repo_root, 'bin', 'zuzu' );
+my $zuzu_bin = File::Spec->catfile( $repo_root, 'bin', 'zuzu.pl' );
 
-ok -x $zuzu_bin, 'bin/zuzu exists and is executable';
+ok -x $zuzu_bin, 'bin/zuzu.pl exists and is executable';
 
 my $tmpdir = tempdir( CLEANUP => 1 );
 my $script = File::Spec->catfile( $tmpdir, 'main.zzs' );

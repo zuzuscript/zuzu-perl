@@ -226,8 +226,8 @@ sub _print_usage {
 	if ( defined $message and $message ne '' ) {
 		print STDERR $message, "\n";
 	}
-	print STDERR "Usage: zuzu [options] path/to/script.zzs [arg ...]\n";
-	print STDERR "       zuzu [options] -e 'code' [arg ...]\n";
+	print STDERR "Usage: zuzu.pl [options] path/to/script.zzs [arg ...]\n";
+	print STDERR "       zuzu.pl [options] -e 'code' [arg ...]\n";
 	print STDERR "Options:\n";
 	print STDERR "  -d[=N]                 set debug level (default: 1 if omitted)\n";
 	print STDERR "  -I/path/to/lib         add module include directory\n";

@@ -84,7 +84,7 @@ sub _print_usage {
 	if ( defined $message and $message ne '' ) {
 		print STDERR $message, "\n";
 	}
-	print STDERR "Usage: zuzu-tidy [--in-place] path/to/script.zzs\n";
+	print STDERR "Usage: zuzu-tidy.pl [--in-place] path/to/script.zzs\n";
 
 	return;
 }
@@ -97,12 +97,12 @@ Zuzu::Tidy::CLI - command-line wrapper for Zuzu::Tidy
 
 =head1 SYNOPSIS
 
-  zuzu-tidy path/to/script.zzs
-  zuzu-tidy --in-place path/to/script.zzs
+  zuzu-tidy.pl path/to/script.zzs
+  zuzu-tidy.pl --in-place path/to/script.zzs
 
 =head1 DESCRIPTION
 
-Provides the executable interface for C<bin/zuzu-tidy>. The command reads a
+Provides the executable interface for C<bin/zuzu-tidy.pl>. The command reads a
 ZuzuScript file, formats it via C<Zuzu::Tidy>, and writes to STDOUT by
 default or updates the file in-place with C<--in-place>.
 

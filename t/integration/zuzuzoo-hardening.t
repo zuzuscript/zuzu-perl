@@ -9,8 +9,8 @@ use IPC::Run3 qw( run3 );
 use JSON::PP;
 
 my $repo_root = File::Spec->rel2abs( File::Spec->curdir );
-my $zuzu_bin = File::Spec->catfile( $repo_root, 'bin', 'zuzu' );
-my $zuzuzoo_bin = File::Spec->catfile( $repo_root, 'bin', 'zuzuzoo' );
+my $zuzu_bin = File::Spec->catfile( $repo_root, 'bin', 'zuzu.pl' );
+my $zuzuzoo_bin = File::Spec->catfile( $repo_root, 'bin', 'zuzuzoo.pl' );
 
 sub run_zuzuzoo {
 	my ( $home, @args ) = @_;

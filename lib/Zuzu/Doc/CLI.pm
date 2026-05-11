@@ -138,7 +138,7 @@ sub _print_usage {
 	if ( defined $message and $message ne '' ) {
 		print STDERR $message, "\n";
 	}
-	print STDERR "Usage: zuzudoc [-I/path/to/lib] path/to/file.zzs|module/name\n";
+	print STDERR "Usage: zuzudoc.pl [-I/path/to/lib] path/to/file.zzs|module/name\n";
 
 	return;
 }

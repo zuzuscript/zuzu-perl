@@ -189,7 +189,7 @@ sub _print_usage {
 		print STDERR $message, "\n";
 	}
 	print STDERR
-		"Usage: zuzu-plackup [options] path/to/app.zzs -- [plackup options]\n";
+		"Usage: zuzu-plackup.pl [options] path/to/app.zzs -- [plackup options]\n";
 	print STDERR "Options:\n";
 	print STDERR
 		"  -d[=N]                 set debug level (default: 1 if omitted)\n";
@@ -210,7 +210,7 @@ Zuzu::Web::PSGI::CLI - command-line runner for ZuzuScript PSGI apps
 
 =head1 DESCRIPTION
 
-Implements C<zuzu-plackup>, a small convenience wrapper around
+Implements C<zuzu-plackup.pl>, a small convenience wrapper around
 C<Zuzu::Web::PSGI> and C<Plack::Runner>.
 
 =cut

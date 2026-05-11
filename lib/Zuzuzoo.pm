@@ -157,17 +157,17 @@ sub _build_command_for_dist {
 		return @cmd;
 	}
 
-	@cmd = ( 'zuzu', @include_args );
+	@cmd = ( 'zuzu.pl', @include_args );
 	return @cmd;
 }
 
 sub _zuzu_from_cli_name {
 	my $candidate = $0;
 	return undef
-		if basename($candidate) ne 'zuzuzoo';
+		if basename($candidate) ne 'zuzuzoo.pl';
 
 	my $dir = dirname($candidate);
-	my $zuzu = File::Spec->catfile( $dir, 'zuzu' );
+	my $zuzu = File::Spec->catfile( $dir, 'zuzu.pl' );
 	return $zuzu
 		if ( -f $zuzu and -x $zuzu );
 

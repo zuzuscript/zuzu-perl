@@ -27,7 +27,7 @@ sub command_available {
 my @runtimes = (
 	{
 		name => 'Perl',
-		cmd  => [ executable('bin', 'zuzu') ],
+		cmd  => [ executable('bin', 'zuzu.pl') ],
 	},
 	{
 		name => 'Rust',

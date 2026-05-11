@@ -8,7 +8,7 @@ use Symbol qw( gensym );
 
 my $repo_root = File::Spec->rel2abs( File::Spec->catdir( File::Spec->curdir ) );
 my $highlighter = File::Spec->catfile(
-	$repo_root, 'bin', 'zuzu-highlight'
+	$repo_root, 'bin', 'zuzu-highlight.pl'
 );
 
 ok -f $highlighter, 'highlighter script exists';

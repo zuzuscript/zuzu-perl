@@ -12,7 +12,7 @@ use Path::Tiny;
 use Time::HiRes qw( time );
 
 my %commands = (
-	perl => './bin/zuzu -It/modules',
+	perl => './bin/zuzu.pl -It/modules',
 	rust => './extras/zuzu-rust/target/release/zuzu-rust -It/modules',
 	'js-node' => './extras/zuzu-js/bin/zuzu-js -It/modules',
 	'js-electron' =>

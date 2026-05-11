@@ -24,10 +24,10 @@ my $repo_root = File::Spec->rel2abs(
 my $zuzu_bin = File::Spec->catfile(
 	$repo_root,
 	'bin',
-	'zuzu',
+	'zuzu.pl',
 );
 
-ok -x $zuzu_bin, 'bin/zuzu exists and is executable';
+ok -x $zuzu_bin, 'bin/zuzu.pl exists and is executable';
 
 my $repl_cmd = join ' ',
 	'printf',

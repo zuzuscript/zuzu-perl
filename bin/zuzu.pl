@@ -7,7 +7,7 @@ use warnings;
 use FindBin qw( $Bin );
 use lib "$Bin/../lib";
 
-use Zuzuzoo::CLI;
+use Zuzu::CLI;
 
-my $exit_code = Zuzuzoo::CLI::run(@ARGV);
+my $exit_code = Zuzu::CLI::run(@ARGV);
 exit $exit_code;
