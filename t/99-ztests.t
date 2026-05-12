@@ -45,17 +45,8 @@ for my $ztest_path ( @zzs_files ) {
 	my $display_name = File::Spec->abs2rel( $ztest_path, $repo_root );
 
 	subtest $display_name => sub {
-		if (
-			$display_name eq 'languagetests/javascript.zzs'
-			or $display_name eq 'stdlib/tests/javascript.zzs'
-		) {
+		if ( $display_name eq 'stdlib/tests/javascript.zzs' ) {
 			plan skip_all => 'Perl runtime does not support the javascript module';
-		}
-		if (
-			$display_name eq 'stdlib/tests/std/db/_mysql.zzs'
-			or $display_name eq 'stdlib/tests/std/db/_postgresql.zzs'
-		) {
-			plan skip_all => 'external database author test';
 		}
 
 		my $source = _slurp_utf8( $ztest_path );
