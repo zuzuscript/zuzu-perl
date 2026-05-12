@@ -26,12 +26,22 @@ like eval_src(<<"SRC"), qr/\A\d+\.\d{6}\z/, "__system__ exposes perl version";
 SRC
 
 is eval_src(
-	"__system__{inc};",
+	'__system__{inc}[0] _ ":" _ __system__{inc}[1];',
 	{
 		lib => [ "/opt/zuzu/modules", "/tmp/extra/modules" ],
 	}
 ), "/opt/zuzu/modules:/tmp/extra/modules",
-	"__system__ exposes lib search paths as colon-delimited String";
+	"__system__ exposes lib search paths as Array";
+
+like(
+	dies {
+		eval_src(<<"SRC", { lib => [ "/opt/zuzu/modules" ] });
+__system__{inc}.append( "/tmp/other" );
+SRC
+	},
+	qr/Cannot modify __system__/,
+	"__system__ rejects inc array mutation",
+);
 
 is eval_src(<<"SRC"), "ok", "__global__ is writable";
 __global__.set( "mode", "ok" );

@@ -95,15 +95,27 @@ sub _resolve_paths {
 	my ( $options ) = @_;
 
 	my $home = $ENV{HOME};
-	if ( ( not $options->{global} ) and ( not defined $home or $home eq '' ) ) {
+	if (
+		( not $options->{global} )
+		and $^O ne 'MSWin32'
+		and ( not defined $home or $home eq '' )
+	) {
 		return ( undef, 'HOME must be defined unless --global is used' );
+	}
+	if (
+		( not $options->{global} )
+		and $^O eq 'MSWin32'
+		and ( not defined $ENV{LOCALAPPDATA} or $ENV{LOCALAPPDATA} eq '' )
+		and ( not defined $home or $home eq '' )
+	) {
+		return ( undef, 'LOCALAPPDATA or HOME must be defined unless --global is used' );
 	}
 
 	my $lib_dir = defined $options->{lib_dir}
 		? $options->{lib_dir}
 		: $options->{global}
-			? '/var/lib/zuzu/modules'
-			: File::Spec->catdir( $home, '.zuzu', 'modules' );
+			? _global_modules_dir()
+			: _user_modules_dir($home);
 
 	my $bin_dir = defined $options->{bin_dir}
 		? $options->{bin_dir}
@@ -122,6 +134,19 @@ sub _resolve_paths {
 		bin_dir => $bin_dir,
 		meta_dir => $meta_dir,
 	}, undef);
+}
+
+sub _user_modules_dir {
+	my ( $home ) = @_;
+	return File::Spec->catdir( $ENV{LOCALAPPDATA}, 'Zuzu', 'modules' )
+		if $^O eq 'MSWin32' and defined $ENV{LOCALAPPDATA} and $ENV{LOCALAPPDATA} ne '';
+	return File::Spec->catdir( $home, '.zuzu', 'modules' );
+}
+
+sub _global_modules_dir {
+	return File::Spec->catdir( $ENV{ProgramData}, 'Zuzu', 'modules' )
+		if $^O eq 'MSWin32' and defined $ENV{ProgramData} and $ENV{ProgramData} ne '';
+	return '/var/lib/zuzu/modules';
 }
 
 sub _run_remove {

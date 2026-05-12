@@ -94,44 +94,91 @@ has 'builtin' => ( is => 'rw', default => sub {
 	};
 } );
 
+our $INITIAL_CWD = Cwd::getcwd();
+
+sub _absolute_module_path {
+	my ( $path ) = @_;
+	return undef if !defined $path or $path eq '';
+	return File::Spec->rel2abs( $path, $INITIAL_CWD );
+}
+
+sub _dedup_paths {
+	my ( @paths ) = @_;
+	my %seen;
+	return grep {
+		defined $_ and $_ ne '' and !$seen{$_}++
+	} @paths;
+}
+
+sub _env_path_separator {
+	return $^O eq 'MSWin32' ? ';' : ':';
+}
+
+sub _user_modules_dir {
+	return _absolute_module_path(
+		File::Spec->catdir( $ENV{LOCALAPPDATA}, 'Zuzu', 'modules' )
+	) if $^O eq 'MSWin32' and defined $ENV{LOCALAPPDATA} and $ENV{LOCALAPPDATA} ne '';
+
+	return _absolute_module_path(
+		File::Spec->catdir( $ENV{HOME}, '.zuzu', 'modules' )
+	) if defined $ENV{HOME} and $ENV{HOME} ne '';
+
+	return undef;
+}
+
+sub _system_modules_dir {
+	return _absolute_module_path(
+		File::Spec->catdir( $ENV{ProgramData}, 'Zuzu', 'modules' )
+	) if $^O eq 'MSWin32' and defined $ENV{ProgramData} and $ENV{ProgramData} ne '';
+
+	return '/var/lib/zuzu/modules';
+}
+
 sub _dist_modules_dir {
 	my $dir = eval { dist_dir('Zuzu') };
 	return undef if !defined $dir or $dir eq '';
-	return $dir if -d File::Spec->catdir( $dir, 'std' );
-	return File::Spec->catdir( $dir, 'modules' );
-}
-
-sub _checkout_modules_dir {
-	my $repo = Cwd::abs_path(
-		File::Spec->catdir( dirname(__FILE__), '..', '..' )
-	);
-	return undef if not defined $repo;
-	my $modules = File::Spec->catdir( $repo, 'stdlib', 'modules' );
-	return $modules if -d $modules;
+	my $modules = File::Spec->catdir( $dir, 'modules' );
+	return _absolute_module_path($modules) if -d $modules;
+	return _absolute_module_path($dir) if -d File::Spec->catdir( $dir, 'std' );
 	return undef;
 }
 
 our @DEFAULT_LIB = do {
-	my @paths = (
-		( $ENV{HOME} ? ( $ENV{HOME} . '/.zuzu/modules' ) : () ),
-		'/var/lib/zuzu/modules',
-		( _checkout_modules_dir() // () ),
-		( _dist_modules_dir() // () ),
-	);
+	my @paths;
 
 	if ( defined $ENV{ZUZULIB} and $ENV{ZUZULIB} ne '' ) {
-		push @paths, grep { defined $_ and $_ ne '' }
-			split /:/, $ENV{ZUZULIB};
+		my $separator = _env_path_separator();
+		push @paths, map {
+			_absolute_module_path($_)
+		} grep {
+			defined $_ and $_ ne ''
+		} split /\Q$separator\E/, $ENV{ZUZULIB};
 	}
 
-	my %seen;
-	@paths = grep { !$seen{$_}++ } @paths;
-	@paths;
+	my $user_dir = _user_modules_dir();
+	push @paths, $user_dir if defined $user_dir and -d $user_dir;
+
+	my $system_dir = _system_modules_dir();
+	push @paths, $system_dir if defined $system_dir and -d $system_dir;
+
+	if ( defined $ENV{ZUZU_STDLIB} and $ENV{ZUZU_STDLIB} ne '' ) {
+		push @paths, _absolute_module_path( $ENV{ZUZU_STDLIB} );
+	}
+	else {
+		push @paths, ( _dist_modules_dir() // () );
+	}
+
+	_dedup_paths(@paths);
 };
 
 sub BUILD {
 	my ($self, $args) = @_;
 
+	$self->lib([
+		_dedup_paths(
+			map { _absolute_module_path($_) } @{ $self->lib // [] }
+		),
+	]);
 	$self->{_parser} = Zuzu::Parser->new;
 	$self->{_global} = Zuzu::Env->new(parent => undef);
 	$self->{_stack} = [ $self->{_global} ];
@@ -580,7 +627,9 @@ sub _install_special_globals {
 			runtime_version => $Zuzu::Runtime::VERSION,
 			perl_version => sprintf( '%.6f', $] ),
 			platform => $^O,
-			inc => join( ':', @{ $self->lib // [] } ),
+				inc => Zuzu::Value::Array->new(
+					items => [ @{ $self->lib // [] } ],
+				),
 			deny_fs => _boolify( $self->is_denied( 'fs' ) ),
 			deny_net => _boolify( $self->is_denied( 'net' ) ),
 			deny_perl => _boolify( $self->is_denied( 'perl' ) ),
@@ -5460,11 +5509,6 @@ sub _module_search_paths {
 	my ( $self, $module, $from_file ) = @_;
 
 	my @paths = @{$self->lib // []};
-	if ( defined $from_file and $from_file ne '' and $from_file !~ /\A</ ) {
-		my $base = dirname($from_file);
-		push @paths, $base;
-		push @paths, File::Spec->catdir($base, 'lib');
-	}
 
 	my %seen;
 	@paths = grep { defined $_ and !$seen{$_}++ } @paths;
@@ -5482,14 +5526,28 @@ sub _module_candidates {
 		return @{ $self->{_module_candidate_cache}{$cache_key} };
 	}
 
-	my @paths = $self->_module_search_paths( $module, $from_file );
-	my @out = map {
-		my $base = $_;
-		(
-			File::Spec->catfile( $base, "$module.zzm" ),
-			File::Spec->catfile( $base, "$module.zzs" ),
-		);
-	} @paths;
+	my @out;
+	if ( File::Spec->file_name_is_absolute($module) or $module =~ /\A\.\.?(?:[\/\\]|\z)/ ) {
+		my $base = (
+			defined $from_file
+			and $from_file ne ''
+			and $from_file !~ /\A</
+		) ? dirname($from_file) : $INITIAL_CWD;
+		my $path = File::Spec->file_name_is_absolute($module)
+			? $module
+			: File::Spec->catfile( $base, $module );
+		@out = ( "$path.zzm", "$path.zzs" );
+	}
+	else {
+		my @paths = $self->_module_search_paths( $module, $from_file );
+		@out = map {
+			my $base = $_;
+			(
+				File::Spec->catfile( $base, "$module.zzm" ),
+				File::Spec->catfile( $base, "$module.zzs" ),
+			);
+		} @paths;
+	}
 	$self->{_module_candidate_cache}{$cache_key} = [ @out ];
 
 	return @out;
