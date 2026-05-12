@@ -259,8 +259,10 @@ sub IMPORT {
 	);
 
 	$path_class->native_constructor( sub {
-		my ( $rt, $klass, $positional ) = @_;
-		my $raw = @{ $positional // [] } ? $positional->[0] : '';
+		my ( $rt, $klass, $positional, $named ) = @_;
+		my $raw = @{ $positional // [] }
+			? $positional->[0]
+			: exists $named->{path} ? $named->{path} : '';
 		my $p = path( defined $raw ? "$raw" : '' );
 
 		return _new_path_object( $klass, $p );
