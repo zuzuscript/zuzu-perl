@@ -92,6 +92,15 @@ is $bad_debug_exit, 2, 'negative debug level is rejected';
 like $bad_debug_output, qr/non-negative integer/,
 	'error explains debug level requirements';
 
+my $help_cmd = "$^X $zuzu_bin --help 2>&1";
+my $help_output = qx{$help_cmd};
+my $help_exit = $? >> 8;
+is $help_exit, 2, '--help exits with usage status';
+like $help_output, qr/--no-cache/,
+	'help documents --no-cache';
+like $help_output, qr/--clear-cache/,
+	'help documents --clear-cache';
+
 my $inc_dir = File::Spec->catdir( $tmpdir, 'modules', 'extras' );
 make_path( $inc_dir );
 my $inc_mod = File::Spec->catfile( $inc_dir, 'value.zzm' );

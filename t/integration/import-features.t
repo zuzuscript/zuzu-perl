@@ -20,6 +20,33 @@ sub write_utf8 {
 	return;
 }
 
+sub write_raw {
+	my ( $path, $bytes ) = @_;
+
+	open my $fh, '>:raw', $path
+		or die "Cannot write $path: $!";
+	print {$fh} $bytes;
+	close $fh;
+
+	return;
+}
+
+sub cache_files {
+	my ( $dir ) = @_;
+
+	return if !-d $dir;
+	opendir my $dh, $dir
+		or die "Cannot read $dir: $!";
+	my @files = map {
+		File::Spec->catfile( $dir, $_ )
+	} grep {
+		/\.stor\z/
+	} readdir $dh;
+	closedir $dh;
+
+	return @files;
+}
+
 sub parse_and_eval {
 	my ( %args ) = @_;
 
@@ -299,6 +326,176 @@ my $module_reparse_count = 0;
 }
 is $module_reparse_count, 1,
 	'module parse reruns after module file update';
+
+my $persistent_root = tempdir( CLEANUP => 1 );
+my $persistent_cache_dir = File::Spec->catdir( $persistent_root, 'ast-cache' );
+my $persistent_lib = File::Spec->catdir( $persistent_root, 'lib', 'persist' );
+make_path( $persistent_lib );
+my $persistent_module = File::Spec->catfile( $persistent_lib, 'hot.zzm' );
+
+write_utf8(
+	$persistent_module,
+	<<'SRC'
+function value () {
+	return 13;
+}
+SRC
+);
+
+my $persistent_ast = $parser->parse(
+	<<'SRC',
+from persist/hot import value;
+SRC
+	File::Spec->catfile( $persistent_root, 'entry.zzs' ),
+);
+
+{
+	local $Zuzu::Runtime::PERSISTENT_AST_CACHE_ROOT = $persistent_cache_dir;
+	local $Zuzu::Runtime::PERSISTENT_AST_CACHE_MAX_SIZE = 100 * 1024 * 1024;
+	local $Zuzu::Runtime::PERSISTENT_AST_CACHE_MAX_AGE = 30 * 24 * 60 * 60;
+	local $Zuzu::Runtime::PERSISTENT_AST_CACHE_EXPIRY_RAN = 0;
+	local %Zuzu::Runtime::MODULE_AST_CACHE = ();
+
+	my $persistent_parse_count = 0;
+	no warnings 'redefine';
+	local *Zuzu::Parser::parse = sub {
+		my ( $self, $source, $path ) = @_;
+		$persistent_parse_count++ if defined $path and $path eq $persistent_module;
+		return $orig_parse->( $self, $source, $path );
+	};
+
+	my $first = Zuzu::Runtime->new(
+		lib => [ File::Spec->catdir( $persistent_root, 'lib' ) ],
+	);
+	$first->evaluate( $persistent_ast );
+	is $first->call( 'value' ), 13,
+		'persistent cache fixture initial value is callable';
+	is $persistent_parse_count, 1,
+		'persistent cache parses source before the cache entry exists';
+
+	%Zuzu::Runtime::MODULE_AST_CACHE = ();
+	my $second = Zuzu::Runtime->new(
+		lib => [ File::Spec->catdir( $persistent_root, 'lib' ) ],
+	);
+	$second->evaluate( $persistent_ast );
+	is $second->call( 'value' ), 13,
+		'persistent cache hit preserves module behaviour';
+	is $persistent_parse_count, 1,
+		'persistent cache avoids reparsing across runtime instances';
+
+	ok scalar( cache_files($persistent_cache_dir) ),
+		'persistent cache writes Storable entries to disk';
+
+	write_utf8(
+		$persistent_module,
+		<<'SRC'
+function value () {
+	return 17;
+}
+SRC
+	);
+
+	%Zuzu::Runtime::MODULE_AST_CACHE = ();
+	my $updated = Zuzu::Runtime->new(
+		lib => [ File::Spec->catdir( $persistent_root, 'lib' ) ],
+	);
+	$updated->evaluate( $persistent_ast );
+	is $updated->call( 'value' ), 17,
+		'persistent cache invalidates when module source changes';
+	is $persistent_parse_count, 2,
+		'changed module source reparses once';
+}
+
+{
+	local $Zuzu::Runtime::PERSISTENT_AST_CACHE_ROOT = File::Spec->catdir( $persistent_root, 'disabled-cache' );
+	local %Zuzu::Runtime::MODULE_AST_CACHE = ();
+
+	my $disabled_parse_count = 0;
+	no warnings 'redefine';
+	local *Zuzu::Parser::parse = sub {
+		my ( $self, $source, $path ) = @_;
+		$disabled_parse_count++ if defined $path and $path eq $persistent_module;
+		return $orig_parse->( $self, $source, $path );
+	};
+
+	for ( 1 .. 2 ) {
+		%Zuzu::Runtime::MODULE_AST_CACHE = ();
+		my $runtime = Zuzu::Runtime->new(
+			lib => [ File::Spec->catdir( $persistent_root, 'lib' ) ],
+			persistent_ast_cache => 0,
+		);
+		$runtime->evaluate( $persistent_ast );
+		is $runtime->call( 'value' ), 17,
+			'module evaluates correctly with persistent AST cache disabled';
+	}
+
+	is $disabled_parse_count, 2,
+		'disabled persistent AST cache parses on each fresh runtime';
+	ok !-d $Zuzu::Runtime::PERSISTENT_AST_CACHE_ROOT,
+		'disabled persistent AST cache does not create a cache directory';
+}
+
+{
+	local $Zuzu::Runtime::PERSISTENT_AST_CACHE_ROOT = $persistent_cache_dir;
+	local $Zuzu::Runtime::PERSISTENT_AST_CACHE_EXPIRY_RAN = 0;
+	local %Zuzu::Runtime::MODULE_AST_CACHE = ();
+
+	my @files = cache_files($persistent_cache_dir);
+	ok @files, 'persistent cache has an entry to corrupt';
+	write_raw( $_, "not a storable cache entry\n" ) for @files;
+
+	my $corrupt_parse_count = 0;
+	no warnings 'redefine';
+	local *Zuzu::Parser::parse = sub {
+		my ( $self, $source, $path ) = @_;
+		$corrupt_parse_count++ if defined $path and $path eq $persistent_module;
+		return $orig_parse->( $self, $source, $path );
+	};
+
+	my $runtime = Zuzu::Runtime->new(
+		lib => [ File::Spec->catdir( $persistent_root, 'lib' ) ],
+	);
+	$runtime->evaluate( $persistent_ast );
+	is $runtime->call( 'value' ), 17,
+		'corrupt persistent cache entry falls back to parsing';
+	is $corrupt_parse_count, 1,
+		'corrupt persistent cache entry reparses once';
+}
+
+{
+	my $expiry_cache_dir = File::Spec->catdir( $persistent_root, 'expiry-cache' );
+	make_path($expiry_cache_dir);
+	my $old_file = File::Spec->catfile( $expiry_cache_dir, 'old.stor' );
+	my $big_file = File::Spec->catfile( $expiry_cache_dir, 'big.stor' );
+	write_raw( $old_file, 'old-cache-entry' );
+	write_raw( $big_file, 'big-cache-entry' x 20 );
+	utime time - 120, time - 120, $old_file;
+	utime time - 60, time - 60, $big_file;
+
+	local $Zuzu::Runtime::PERSISTENT_AST_CACHE_ROOT = $expiry_cache_dir;
+	local $Zuzu::Runtime::PERSISTENT_AST_CACHE_MAX_AGE = 30;
+	local $Zuzu::Runtime::PERSISTENT_AST_CACHE_MAX_SIZE = 20;
+	local $Zuzu::Runtime::PERSISTENT_AST_CACHE_EXPIRY_RAN = 0;
+	local %Zuzu::Runtime::MODULE_AST_CACHE = ();
+
+	my $runtime = Zuzu::Runtime->new(
+		lib => [ File::Spec->catdir( $persistent_root, 'lib' ) ],
+	);
+	$runtime->evaluate( $persistent_ast );
+	is $runtime->call( 'value' ), 17,
+		'module evaluates while persistent cache expiry runs';
+	ok !-e $old_file,
+		'persistent cache expiry removes entries older than max age';
+
+	my $total_size = 0;
+	$total_size += -s $_ for cache_files($expiry_cache_dir);
+	cmp_ok $total_size, '<=', 20,
+		'persistent cache expiry enforces the size budget';
+
+	$runtime->clear_persistent_ast_cache;
+	is [ cache_files($expiry_cache_dir) ], [],
+		'clear_persistent_ast_cache removes persistent cache files';
+}
 
 my $builtin_runtime = Zuzu::Runtime->new(
 	lib => [],

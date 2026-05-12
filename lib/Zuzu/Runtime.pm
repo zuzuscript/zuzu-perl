@@ -5,10 +5,15 @@ use utf8;
 our $VERSION = '0.001';
 our $DEBUG_LEVEL = 0;
 
+use Digest::MD5 qw( md5_hex );
+use Encode qw( FB_CROAK decode );
 use File::Spec;
 use File::Basename qw( dirname );
+use File::Path qw( make_path );
 use File::ShareDir qw( dist_dir );
+use File::Temp qw( tempfile );
 use Cwd ();
+use Storable qw( nstore retrieve );
 
 use Zuzu::Env;
 use Zuzu::Error;
@@ -45,6 +50,12 @@ no warnings 'recursion';
 
 our %MODULE_AST_CACHE;
 our %MODULE_PATH_CACHE;
+our $PERSISTENT_AST_CACHE_VERSION = 1;
+our $PERSISTENT_AST_CACHE_MAGIC = 'ZUZU-PERL-AST-CACHE';
+our $PERSISTENT_AST_CACHE_MAX_SIZE = 100 * 1024 * 1024;
+our $PERSISTENT_AST_CACHE_MAX_AGE = 30 * 24 * 60 * 60;
+our $PERSISTENT_AST_CACHE_ROOT;
+our $PERSISTENT_AST_CACHE_EXPIRY_RAN = 0;
 our $EMPTY_HASH = {};
 our $EMPTY_ARRAY = [];
 
@@ -57,6 +68,7 @@ has 'deny_modules' => ( is => 'rw', default => sub { [] } );
 has 'forbid' => ( is => 'rw', default => sub { [] } );
 has 'deny' => ( is => 'rw', default => sub { [] } );
 has 'allow' => ( is => 'rw' );
+has 'persistent_ast_cache' => ( is => 'rw', default => sub { 1 } );
 has 'builtin' => ( is => 'rw', default => sub {
 	return {
 		'std/data/json' => 'Zuzu::Module::JSON',
@@ -5659,6 +5671,213 @@ sub _resolve_module_file {
 	return undef;
 }
 
+sub _persistent_ast_cache_root_path {
+	return $PERSISTENT_AST_CACHE_ROOT
+		if defined $PERSISTENT_AST_CACHE_ROOT
+		and $PERSISTENT_AST_CACHE_ROOT ne '';
+
+	if ( $^O eq 'MSWin32' and defined $ENV{LOCALAPPDATA} and $ENV{LOCALAPPDATA} ne '' ) {
+		return File::Spec->catdir( $ENV{LOCALAPPDATA}, 'Zuzu', 'cache', 'zuzu-perl' );
+	}
+
+	return File::Spec->catdir( $ENV{HOME}, '.zuzu', 'cache', 'zuzu-perl' )
+		if defined $ENV{HOME} and $ENV{HOME} ne '';
+
+	return undef;
+}
+
+sub _persistent_ast_cache_root {
+	my ( $self ) = @_;
+
+	return undef if !$self->persistent_ast_cache;
+
+	return _persistent_ast_cache_root_path();
+}
+
+sub clear_persistent_ast_cache {
+	my ( $self ) = @_;
+
+	my $root = _persistent_ast_cache_root_path();
+	return if !defined $root or $root eq '' or !-d $root;
+
+	eval {
+		opendir my $dh, $root
+			or return;
+		while ( defined( my $name = readdir $dh ) ) {
+			next if $name !~ /(?:\.stor\z|\A\.ast-cache-)/;
+			my $path = File::Spec->catfile( $root, $name );
+			unlink $path if -f $path;
+		}
+		closedir $dh;
+	};
+
+	return;
+}
+
+sub _read_module_source_bytes {
+	my ( $self, $path, $file, $line ) = @_;
+
+	open my $fh, '<:raw', $path
+		or die Zuzu::Error->new_runtime(
+			message => "Cannot open '$path': $!",
+			file => $file,
+			line => $line,
+		);
+	local $/;
+	my $bytes = <$fh>;
+	close $fh;
+
+	return $bytes;
+}
+
+sub _persistent_ast_cache_path {
+	my ( $self, $module, $path, $source_md5 ) = @_;
+
+	my $root = $self->_persistent_ast_cache_root;
+	return if !defined $root or $root eq '';
+
+	my $id = md5_hex(
+		join "\x1f",
+		$PERSISTENT_AST_CACHE_MAGIC,
+		$PERSISTENT_AST_CACHE_VERSION,
+		$],
+		$module,
+		$path,
+		$source_md5,
+	);
+
+	return File::Spec->catfile( $root, "$id.stor" );
+}
+
+sub _persistent_ast_cache_load {
+	my ( $self, $cache_path, $module, $path, $source_md5, $st ) = @_;
+
+	return if !defined $cache_path or !-f $cache_path;
+
+	if ( ( $PERSISTENT_AST_CACHE_MAX_AGE // 0 ) > 0 ) {
+		my @cache_st = stat $cache_path;
+		if ( @cache_st and time - ( $cache_st[9] // 0 ) > $PERSISTENT_AST_CACHE_MAX_AGE ) {
+			unlink $cache_path;
+			return;
+		}
+	}
+
+	my $entry = eval { retrieve($cache_path) };
+	return if $@ or ref($entry) ne 'HASH';
+
+	return if ( $entry->{magic} // '' ) ne $PERSISTENT_AST_CACHE_MAGIC;
+	return if ( $entry->{version} // -1 ) != $PERSISTENT_AST_CACHE_VERSION;
+	return if ( $entry->{perl_version} // '' ) ne $];
+	return if ( $entry->{module} // '' ) ne $module;
+	return if ( $entry->{path} // '' ) ne $path;
+	return if ( $entry->{source_md5} // '' ) ne $source_md5;
+	return if ( $entry->{source_size} // -1 ) != ( $st->[7] // -1 );
+	return if ( $entry->{source_mtime} // -1 ) != ( $st->[9] // -1 );
+
+	my $ast = $entry->{ast};
+	return
+		if !blessed($ast)
+		or !$ast->isa('Zuzu::AST::Program');
+
+	eval { utime time, time, $cache_path };
+
+	return $ast;
+}
+
+sub _persistent_ast_cache_store {
+	my ( $self, $cache_path, $module, $path, $source_md5, $st, $ast ) = @_;
+
+	return if !defined $cache_path;
+
+	my $root = $self->_persistent_ast_cache_root;
+	return if !defined $root or $root eq '';
+
+	eval {
+		make_path( $root, { mode => 0700 } ) if !-d $root;
+		return if !-d $root;
+
+		my ( $tmp_fh, $tmp_path ) = tempfile(
+			'.ast-cache-XXXXXX',
+			DIR => $root,
+			UNLINK => 0,
+		);
+		close $tmp_fh;
+
+		my $entry = {
+			magic => $PERSISTENT_AST_CACHE_MAGIC,
+			version => $PERSISTENT_AST_CACHE_VERSION,
+			perl_version => $],
+			module => $module,
+			path => $path,
+			source_md5 => $source_md5,
+			source_size => $st->[7] // -1,
+			source_mtime => $st->[9] // -1,
+			ast => $ast,
+		};
+
+		eval {
+			nstore( $entry, $tmp_path );
+			chmod 0600, $tmp_path;
+			rename $tmp_path, $cache_path
+				or die "Cannot rename '$tmp_path' to '$cache_path': $!";
+			1;
+		} or do {
+			unlink $tmp_path if defined $tmp_path and -e $tmp_path;
+		};
+	};
+
+	return;
+}
+
+sub _expire_persistent_ast_cache {
+	my ( $self ) = @_;
+
+	return if $PERSISTENT_AST_CACHE_EXPIRY_RAN;
+	$PERSISTENT_AST_CACHE_EXPIRY_RAN = 1;
+
+	my $root = $self->_persistent_ast_cache_root;
+	return if !defined $root or $root eq '' or !-d $root;
+
+	my $now = time;
+	my $max_age = $PERSISTENT_AST_CACHE_MAX_AGE // 0;
+	my $max_size = $PERSISTENT_AST_CACHE_MAX_SIZE // 0;
+
+	eval {
+		opendir my $dh, $root
+			or return;
+
+		my @entries;
+		while ( defined( my $name = readdir $dh ) ) {
+			next if $name !~ /\.stor\z/;
+			my $path = File::Spec->catfile( $root, $name );
+			my @st = stat $path;
+			next if !@st or !-f _;
+
+			if ( $max_age > 0 and $now - $st[9] > $max_age ) {
+				unlink $path;
+				next;
+			}
+
+			push @entries, [ $path, $st[7] // 0, $st[9] // 0 ];
+		}
+		closedir $dh;
+
+		return if $max_size <= 0;
+
+		my $total = 0;
+		$total += $_->[1] for @entries;
+		return if $total <= $max_size;
+
+		for my $entry ( sort { $a->[2] <=> $b->[2] } @entries ) {
+			last if $total <= $max_size;
+			next if !unlink $entry->[0];
+			$total -= $entry->[1];
+		}
+	};
+
+	return;
+}
+
 sub _load_module {
 	my ($self, $module, $file, $line) = @_;
 
@@ -5714,12 +5933,47 @@ sub _load_module {
 		( defined $st[7] ? $st[7] : -1 );
 	my $ast = $MODULE_AST_CACHE{$ast_cache_key};
 	if ( !defined $ast ) {
-		open my $fh, '<:encoding(UTF-8)', $found or die Zuzu::Error->new_runtime(message => "Cannot open '$found': $!", file => $file, line => $line);
-		local $/;
-		my $src = <$fh>;
-		close $fh;
+		my $source_bytes = $self->_read_module_source_bytes( $found, $file, $line );
+		my ( $source_md5, $persistent_cache_path );
 
-		$ast = $self->{_parser}->parse($src, $found);
+		if ( $self->persistent_ast_cache ) {
+			$source_md5 = md5_hex($source_bytes);
+			$persistent_cache_path = $self->_persistent_ast_cache_path(
+				$module,
+				$found,
+				$source_md5,
+			);
+
+			$ast = $self->_persistent_ast_cache_load(
+				$persistent_cache_path,
+				$module,
+				$found,
+				$source_md5,
+				\@st,
+			);
+			$self->_expire_persistent_ast_cache if defined $ast;
+		}
+
+		if ( !defined $ast ) {
+			my $src = eval { decode( 'UTF-8', $source_bytes, FB_CROAK ) };
+			die Zuzu::Error->new_compile(
+				message => "Cannot decode '$found' as UTF-8: $@",
+				file => $file,
+				line => $line,
+			) if $@;
+
+			$ast = $self->{_parser}->parse($src, $found);
+			$self->_persistent_ast_cache_store(
+				$persistent_cache_path,
+				$module,
+				$found,
+				$source_md5,
+				\@st,
+				$ast,
+			) if defined $persistent_cache_path;
+			$self->_expire_persistent_ast_cache if defined $persistent_cache_path;
+		}
+
 		$MODULE_AST_CACHE{$ast_cache_key} = $ast;
 	}
 

@@ -38,6 +38,8 @@ sub run {
 		return 2;
 	}
 
+	Zuzu::Runtime->clear_persistent_ast_cache if $options->{clear_cache};
+
 	if ( $options->{show_version} or $options->{show_version_verbose} ) {
 		_print_version( $options, $deny, $deny_module_list );
 		return 0;
@@ -60,6 +62,7 @@ sub run {
 		lib => [ @{ $options->{include_dirs} }, @Zuzu::Runtime::DEFAULT_LIB ],
 		deny => $deny,
 		deny_modules => $deny_module_list,
+		persistent_ast_cache => !$options->{no_cache},
 	);
 
 	if ( $options->{repl_mode} ) {
@@ -107,6 +110,8 @@ sub _parse_options {
 		deny_modules => [],
 		inline_snippets => [],
 		preload_modules => [],
+		no_cache => 0,
+		clear_cache => 0,
 		repl_mode => 0,
 		show_version => 0,
 		show_version_verbose => 0,
@@ -126,6 +131,8 @@ sub _parse_options {
 		'denymodule=s@' => $options->{deny_modules},
 		'e=s@' => $options->{inline_snippets},
 		'M=s@' => $options->{preload_modules},
+		'no-cache' => \$options->{no_cache},
+		'clear-cache' => \$options->{clear_cache},
 		'R|repl' => \$options->{repl_mode},
 		'h|help' => \$options->{show_help},
 		'v' => \$options->{show_version},
@@ -235,6 +242,8 @@ sub _print_usage {
 	print STDERR "  --denymodule=MODULE    deny a specific module (repeatable)\n";
 	print STDERR "  -e 'code'              evaluate inline code (repeatable)\n";
 	print STDERR "  -Mmodule               preload module with wildcard import\n";
+	print STDERR "  --no-cache             disable the persistent module AST cache\n";
+	print STDERR "  --clear-cache          clear the persistent module AST cache before running\n";
 	print STDERR "  -R, --repl             start interactive REPL shell\n";
 	print STDERR "  -h, --help             show this help\n";
 	print STDERR "  -v                     print version\n";
@@ -250,6 +259,7 @@ sub _print_version {
 		lib => [ @{ $options->{include_dirs} }, @Zuzu::Runtime::DEFAULT_LIB ],
 		deny => $deny,
 		deny_modules => $deny_module_list,
+		persistent_ast_cache => !$options->{no_cache},
 	);
 
 	print "zuzu version $Zuzu::VERSION\n";
