@@ -216,6 +216,14 @@ sub DEMOLISH {
 sub evaluate {
 	my ($self, $ast) = @_;
 
+	if (
+		blessed($ast)
+		and $ast->isa('Zuzu::AST::Program')
+		and !$self->_env->{slots}{'__file__'}
+	) {
+		$self->_declare_file_const( $self->_env, $ast->file, 0 );
+	}
+
 	return $ast->evaluate($self);
 }
 
@@ -5580,6 +5588,48 @@ sub _refresh_module_builtin_alias_cache {
 	return;
 }
 
+sub _file_value_for_path {
+	my ( $self, $path, $force_absolute ) = @_;
+
+	return undef if $self->is_denied( 'fs' );
+	return undef if !defined $path or $path eq '' or $path =~ /\A</;
+	return undef if $path eq '(command line)';
+
+	my $file_path = $force_absolute
+		? File::Spec->rel2abs( $path, $INITIAL_CWD )
+		: $path;
+	my $module_env = $self->_load_builtin_module( 'std/io', $file_path, 0 );
+	my $class_ref = $module_env->find_ref('Path');
+	return undef if !defined $class_ref;
+	my $path_class = ${ $class_ref };
+	return undef
+		if !blessed($path_class)
+		or !$path_class->isa('Zuzu::Value::Class')
+		or !$path_class->native_constructor;
+
+	return $path_class->native_constructor->(
+		$self,
+		$path_class,
+		[ $file_path ],
+		{},
+		$file_path,
+		0,
+	);
+}
+
+sub _declare_file_const {
+	my ( $self, $env, $path, $force_absolute ) = @_;
+
+	return if !defined $env or $env->{slots}{'__file__'};
+	$env->declare(
+		'__file__',
+		$self->_file_value_for_path( $path, $force_absolute ),
+		1,
+	);
+
+	return;
+}
+
 sub _module_path_cache_key {
 	my ( $self, $module, $from_file ) = @_;
 
@@ -5682,10 +5732,14 @@ sub _load_module {
 			$alias->[2],
 		);
 	}
+	$self->_declare_file_const( $mod_env, $found, 1 );
 
 	$self->{_module_loading}{$module} = 1;
 	$self->{_modules}{$module} = $mod_env;
-	my $pre_slots = $self->{_module_builtin_slot_set} // {};
+	my $pre_slots = {
+		%{ $self->{_module_builtin_slot_set} // {} },
+		__file__ => 1,
+	};
 
 	$self->_push_env($mod_env);
 	eval { $self->evaluate($ast); 1 } or do {

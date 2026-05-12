@@ -454,6 +454,7 @@ sub _repl_prelude_for_runtime {
 		typeof
 		to_binary
 		to_string
+		__file__
 		__system__
 		__global__
 	);

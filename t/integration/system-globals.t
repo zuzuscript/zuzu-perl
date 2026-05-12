@@ -1,4 +1,6 @@
 use Test2::V0;
+use File::Path qw( make_path remove_tree );
+use File::Spec;
 
 use Zuzu::Parser;
 use Zuzu::Runtime;
@@ -6,9 +8,9 @@ use Zuzu::Runtime;
 my $parser = Zuzu::Parser->new;
 
 sub eval_src {
-	my ( $src, $runtime_args ) = @_;
+	my ( $src, $runtime_args, $filename ) = @_;
 	my $runtime = Zuzu::Runtime->new( %{ $runtime_args // {} } );
-	my $ast = $parser->parse( $src, "system-globals.zzs" );
+	my $ast = $parser->parse( $src, defined $filename ? $filename : "system-globals.zzs" );
 
 	return $runtime->evaluate($ast);
 }
@@ -77,5 +79,29 @@ SRC
 	qr/Cannot assign to const '__system__'/,
 	"__system__ binding is const",
 );
+
+is eval_src(<<"SRC"), "system-globals.zzs", "__file__ exposes the initial source file";
+__file__.to_String();
+SRC
+
+is eval_src(<<"SRC", { deny => [ "fs" ] }), undef, "__file__ is null when fs is denied";
+__file__;
+SRC
+
+my $tmp_root = File::Spec->catdir( File::Spec->tmpdir, "zuzu-perl-file-global-$$" );
+my $module_dir = File::Spec->catdir( $tmp_root, 'modules' );
+make_path($module_dir);
+my $module_path = File::Spec->catfile( $module_dir, 'file_probe.zzm' );
+open my $module_fh, '>:encoding(UTF-8)', $module_path
+	or die "Could not write $module_path: $!";
+print {$module_fh} "const module_file := __file__.to_String();\n";
+close $module_fh;
+
+is eval_src(<<"SRC", { lib => [ $module_dir ] }), File::Spec->rel2abs( $module_path ), "__file__ is absolute in loaded modules";
+from file_probe import module_file;
+module_file;
+SRC
+
+remove_tree($tmp_root);
 
 done_testing;
