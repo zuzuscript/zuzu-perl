@@ -5598,7 +5598,7 @@ sub _file_value_for_path {
 	my $file_path = $force_absolute
 		? File::Spec->rel2abs( $path, $INITIAL_CWD )
 		: $path;
-	my $module_env = $self->_load_builtin_module( 'std/io', $file_path, 0 );
+	my $module_env = $self->_load_module( 'std/io', $file_path, 0 );
 	my $class_ref = $module_env->find_ref('Path');
 	return undef if !defined $class_ref;
 	my $path_class = ${ $class_ref };
@@ -5790,6 +5790,8 @@ sub _is_denied_module {
 
 sub _load_builtin_module {
 	my ( $self, $module, $file, $line ) = @_;
+
+	return $self->{_modules}{$module} if $self->{_modules}{$module};
 
 	my $pkg = $self->builtin->{$module};
 	die Zuzu::Error->new_compile(
