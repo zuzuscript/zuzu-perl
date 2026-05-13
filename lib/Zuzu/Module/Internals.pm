@@ -27,6 +27,24 @@ sub IMPORT {
 		},
 	);
 
+	my $classof = native_function(
+		name => 'classof',
+		native => sub {
+			my ( $value ) = @_;
+			return undef if !defined $value;
+
+			if ( blessed($value) and $value->isa('Zuzu::Value::Object') ) {
+				return $value->class if blessed( $value->class );
+				return undef;
+			}
+
+			my $type = $runtime->_type_name($value);
+			return undef if $type =~ /\A(?:Null|Boolean|Number|String|Method)\z/;
+
+			return $runtime->{_builtin_classes}{$type};
+		},
+	);
+
 	my $object_slots = native_function(
 		name => 'object_slots',
 		native => sub {
@@ -209,6 +227,7 @@ sub IMPORT {
 
 	return {
 		class_name => $class_name,
+		classof => $classof,
 		object_slots => $object_slots,
 		ansi_esc => $ansi_esc,
 		ref_id => $ref_id,
