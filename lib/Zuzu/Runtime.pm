@@ -87,8 +87,6 @@ has 'builtin' => ( is => 'rw', default => sub {
 		'std/net/smtp' => 'Zuzu::Module::Net::SMTP',
 		'std/net/url' => 'Zuzu::Module::URL',
 		'std/proc' => 'Zuzu::Module::Proc',
-		'std/log' => 'Zuzu::Module::Log',
-		'std/getopt' => 'Zuzu::Module::Getopt',
 		'std/db' => 'Zuzu::Module::DB',
 		'std/clib' => 'Zuzu::Module::CLib',
 		'std/io/socks' => 'Zuzu::Module::Socks',

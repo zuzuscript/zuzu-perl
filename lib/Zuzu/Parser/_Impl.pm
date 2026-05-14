@@ -72,11 +72,17 @@ has 'scopes' => (
 			$_ => { kind => 'builtin', mutable => 0 }
 			} qw(
 				Exception
+				Any
+				Null
+				Boolean
+				Number
 				AssertionException
 				TypeException
 				CancelledException
 				TimeoutException
 				ChannelClosedException
+				Object
+				Collection
 				Array
 				Dict
 				PairList
@@ -86,6 +92,10 @@ has 'scopes' => (
 				String
 				BinaryString
 				Task
+				Regexp
+				Function
+				Trait
+				Class
 				say
 				print
 				warn
