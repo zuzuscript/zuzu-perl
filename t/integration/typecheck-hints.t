@@ -42,11 +42,73 @@ is $call_y->{_arg_static_types}[0], 'Number',
 is $call_7->{_arg_static_types}[0], 'Number',
 	'call argument from literal carries static type hint';
 
+my $reuse_block_ast = $parser->parse(<<'SRC', 'block-reuse-hint.zzs');
+let Number counter := 1;
+if (counter == 1) {
+	counter := counter + 1;
+}
+counter;
+SRC
+
+is $reuse_block_ast->statements->[1]->then_block->reuse_current_env, 1,
+	'block without declarations or calls is marked for current-env reuse';
+
+my $decl_block_ast = $parser->parse(<<'SRC', 'block-reuse-decl-hint.zzs');
+if (true) {
+	let y := 2;
+}
+SRC
+
+is $decl_block_ast->statements->[0]->then_block->reuse_current_env, 0,
+	'block with lexical declarations keeps a new env';
+
+my $fn_decl_block_ast = $parser->parse(<<'SRC', 'block-reuse-function-decl-hint.zzs');
+if (true) {
+	function inner() {
+		return 1;
+	}
+}
+SRC
+
+is $fn_decl_block_ast->statements->[0]->then_block->reuse_current_env, 0,
+	'block with function declarations keeps a new env';
+
+my $call_block_ast = $parser->parse(<<'SRC', 'block-reuse-call-hint.zzs');
+function f() {
+	return 1;
+}
+if (true) {
+	f();
+}
+SRC
+
+is $call_block_ast->statements->[1]->then_block->reuse_current_env, 0,
+	'block with function calls keeps a new env';
+
+my $method_call_block_ast = $parser->parse(<<'SRC', 'block-reuse-method-call-hint.zzs');
+class C {
+	method f() {
+		return 1;
+	}
+}
+let c := new C();
+if (true) {
+	c.f();
+}
+SRC
+
+is $method_call_block_ast->statements->[2]->then_block->reuse_current_env, 0,
+	'block with method calls keeps a new env';
+
 my $runtime = Zuzu::Runtime->new;
 $runtime->evaluate($ast);
 
 is $runtime->call('take', 9), 9,
 	'optimized hints still preserve correct function behavior';
+
+my $reuse_runtime = Zuzu::Runtime->new;
+is $reuse_runtime->evaluate($reuse_block_ast), 2,
+	'current-env block reuse preserves assignment behaviour';
 
 like dies {
 	my $bad_ast = $parser->parse(<<'SRC_BAD', 'typecheck-hints-bad.zzs');

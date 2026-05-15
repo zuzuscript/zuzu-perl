@@ -13,6 +13,19 @@ has 'types' => ( is => 'rw', default => sub { {} } );
 has 'weak' => ( is => 'rw', default => sub { {} } );
 has 'special_props' => ( is => 'rw', default => sub { {} } );
 
+sub _new_fast {
+	my ( $class, $parent ) = @_;
+
+	return bless {
+		parent        => $parent,
+		slots         => {},
+		const         => {},
+		types         => {},
+		weak          => {},
+		special_props => {},
+	}, $class;
+}
+
 sub declare {
 	my (
 		$self, $name, $value, $is_const,
@@ -45,9 +58,11 @@ sub alias_to_ref {
 sub find_ref {
 	my ($self, $name) = @_;
 
-	return $self->{slots}{$name} if exists $self->{slots}{$name};
-
-	return $self->{parent}->find_ref($name) if $self->{parent};
+	my $env = $self;
+	while ($env) {
+		return $env->{slots}{$name} if exists $env->{slots}{$name};
+		$env = $env->{parent};
+	}
 
 	return undef;
 }
@@ -73,9 +88,11 @@ sub is_weak_here {
 sub is_weak_slot {
 	my ($self, $name) = @_;
 
-	return $self->{weak}{$name} if exists $self->{weak}{$name};
-
-	return $self->{parent}->is_weak_slot($name) if $self->{parent};
+	my $env = $self;
+	while ($env) {
+		return $env->{weak}{$name} if exists $env->{weak}{$name};
+		$env = $env->{parent};
+	}
 
 	return 0;
 }
@@ -97,9 +114,11 @@ sub set_weak_slot {
 sub declared_type_for {
 	my ( $self, $name ) = @_;
 
-	return $self->{types}{$name} if exists $self->{types}{$name};
-
-	return $self->{parent}->declared_type_for($name) if $self->{parent};
+	my $env = $self;
+	while ($env) {
+		return $env->{types}{$name} if exists $env->{types}{$name};
+		$env = $env->{parent};
+	}
 
 	return 'Any';
 }

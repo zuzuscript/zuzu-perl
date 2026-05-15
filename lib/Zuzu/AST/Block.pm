@@ -7,6 +7,7 @@ our $VERSION = '0.001';
 use Moo;
 
 has 'statements' => ( is => 'rw' );
+has 'reuse_current_env' => ( is => 'rw', default => sub { 0 } );
 
 with 'Zuzu::AST::Role::Node';
 

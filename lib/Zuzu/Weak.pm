@@ -60,7 +60,8 @@ sub _assert_storage_ref {
 sub store_value {
 	my ( $slot_ref, $value, $is_weak ) = @_;
 
-	_assert_storage_ref( $slot_ref, 'Weak storage' );
+	_assert_storage_ref( $slot_ref, 'Weak storage' )
+		if ref($slot_ref) ne 'SCALAR';
 
 	$$slot_ref = $value;
 	weaken($$slot_ref)
@@ -72,7 +73,8 @@ sub store_value {
 sub slot_value {
 	my ( $slot_ref ) = @_;
 
-	_assert_storage_ref( $slot_ref, 'Weak storage read' );
+	_assert_storage_ref( $slot_ref, 'Weak storage read' )
+		if ref($slot_ref) ne 'SCALAR';
 
 	return $$slot_ref;
 }

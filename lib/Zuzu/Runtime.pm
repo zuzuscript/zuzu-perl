@@ -50,7 +50,7 @@ no warnings 'recursion';
 
 our %MODULE_AST_CACHE;
 our %MODULE_PATH_CACHE;
-our $PERSISTENT_AST_CACHE_VERSION = 1;
+our $PERSISTENT_AST_CACHE_VERSION = 3;
 our $PERSISTENT_AST_CACHE_MAGIC = 'ZUZU-PERL-AST-CACHE';
 our $PERSISTENT_AST_CACHE_MAX_SIZE = 100 * 1024 * 1024;
 our $PERSISTENT_AST_CACHE_MAX_AGE = 30 * 24 * 60 * 60;
@@ -62,6 +62,7 @@ our $EMPTY_ARRAY = [];
 my $TRUE  = Zuzu::Value::Boolean->new( value => 1 );
 my $FALSE = Zuzu::Value::Boolean->new( value => 0 );
 sub _boolify { $_[0] ? $TRUE : $FALSE }
+my @BUILTIN_COLLECTION_KINDS = qw( Array Dict PairList Set Bag );
 
 has 'lib' => ( is => 'rw', default => sub { [ @Zuzu::Runtime::DEFAULT_LIB ] } );
 has 'deny_modules' => ( is => 'rw', default => sub { [] } );
@@ -190,7 +191,7 @@ sub BUILD {
 		),
 	]);
 	$self->{_parser} = Zuzu::Parser->new;
-	$self->{_global} = Zuzu::Env->new(parent => undef);
+	$self->{_global} = Zuzu::Env->_new_fast(undef);
 	$self->{_stack} = [ $self->{_global} ];
 	$self->{_modules} = {}; # module => env
 	$self->{_module_exports} = {}; # module => { name => 1 }
@@ -290,7 +291,7 @@ sub eval_with_current_scope {
 	my ( $self, $source, $filename ) = @_;
 
 	my $ast = $self->parse_with_current_scope( $source, $filename );
-	my $env = Zuzu::Env->new( parent => $self->_env );
+	my $env = Zuzu::Env->_new_fast( $self->_env );
 	$self->_push_env($env);
 	my ( $ok, $result, $error );
 	$ok = eval {
@@ -422,7 +423,7 @@ sub _capture_env {
 	return undef if !defined $env;
 
 	my $captured_parent = $self->_capture_env( $env->parent );
-	my $captured = Zuzu::Env->new( parent => $captured_parent );
+	my $captured = Zuzu::Env->_new_fast( $captured_parent );
 	for my $name ( keys %{ $env->slots } ) {
 		$captured->alias_to_ref(
 			$name,
@@ -981,7 +982,14 @@ sub eval_program {
 sub eval_block {
 	my ($self, $node) = @_;
 
-	my $env = Zuzu::Env->new(parent => $self->_env);
+	if ( $node->{reuse_current_env} ) {
+		my $v;
+		for my $s (@{$node->statements}) { $v = $s->evaluate($self); }
+
+		return $v;
+	}
+
+	my $env = Zuzu::Env->_new_fast( $self->_env );
 	$self->_push_env($env);
 	my $v;
 	eval {
@@ -1253,7 +1261,7 @@ sub _make_path_replace_callback {
 	);
 	$fn->{_native} = sub {
 		my ( $match_value ) = @_;
-		my $env = Zuzu::Env->new( parent => $captured_env );
+		my $env = Zuzu::Env->_new_fast( $captured_env );
 		$self->_push_env($env);
 		$env->declare( 'm', $match_value, 1, 'Any' );
 		my $value;
@@ -1584,7 +1592,7 @@ sub eval_assign {
 		die Zuzu::Error->new_runtime(message => "Unsupported assignment operator '$op'", file => $file, line => $line);
 	}
 
-	return slot_value($ref);
+	return $$ref;
 }
 
 sub _assign_string_slice {
@@ -1757,7 +1765,7 @@ sub eval_for {
 
 		my $using_inner_loop_scope = $node->declare_loop_var ? 1 : 0;
 		if ($using_inner_loop_scope) {
-			my $env = Zuzu::Env->new(parent => $self->_env);
+			my $env = Zuzu::Env->_new_fast( $self->_env );
 			$self->_push_env($env);
 			my $const_flag = ( defined $node->loop_var_kind and $node->loop_var_kind eq 'const' ) ? 1 : 0;
 			$env->declare($node->var, $it, $const_flag);
@@ -2001,15 +2009,16 @@ sub eval_class_def {
 			param_optional => { %{ $m->param_optional // {} } },
 			param_defaults => { %{ $m->param_defaults // {} } },
 			return_type => $m->return_type // 'Any',
-			body => $m->body,
-			closure_env => $self->_env,
-			is_async => $m->is_async ? 1 : 0,
+		body => $m->body,
+		closure_env => $self->_env,
+		is_async => $m->is_async ? 1 : 0,
 		);
 		$method_fn->{_default_typecheck_safe} = { %{ $m->{_default_typecheck_safe} // {} } };
 		$method_fn->{_owner_class} = $klass;
 		$method_fn->{_method_name} = $m->name;
 		$method_fn->{_method_kind} = 'instance';
 		$method_fn->{_method_source} = 'class';
+		$method_fn->{_uses_super} = $m->uses_super ? 1 : 0;
 		$klass->methods->{ $m->name } = $method_fn;
 	}
 	for my $trait ( @traits ) {
@@ -2035,6 +2044,7 @@ sub eval_class_def {
 			$trait_method->{_method_name} = $mname;
 			$trait_method->{_method_kind} = 'instance';
 			$trait_method->{_method_source} = 'trait';
+			$trait_method->{_uses_super} = $source_method->{_uses_super} ? 1 : 0;
 			push @{ $klass->trait_methods->{ $mname } }, $trait_method;
 		}
 	}
@@ -2059,10 +2069,11 @@ sub eval_class_def {
 		$static_fn->{_method_name} = $m->name;
 		$static_fn->{_method_kind} = 'static';
 		$static_fn->{_method_source} = 'class';
+		$static_fn->{_uses_super} = $m->uses_super ? 1 : 0;
 		$klass->static_methods->{ $m->name } = $static_fn;
 	}
 
-	my $class_env = Zuzu::Env->new(parent => $self->_env);
+	my $class_env = Zuzu::Env->_new_fast( $self->_env );
 	$class_env->declare('self', $klass, 1);
 	$self->_push_env($class_env);
 	for my $n (@{ $node->classes // [] }) {
@@ -2116,6 +2127,7 @@ sub eval_trait_def {
 			is_async => $m->is_async ? 1 : 0,
 		);
 		$method->{_default_typecheck_safe} = { %{ $m->{_default_typecheck_safe} // {} } };
+		$method->{_uses_super} = $m->uses_super ? 1 : 0;
 		$trait->methods->{ $m->name } = $method;
 	}
 
@@ -2188,7 +2200,7 @@ sub eval_try {
 		for my $catch ( @{ $node->catches // [] } ) {
 			my $type = $catch->type_expr->evaluate($self);
 			next if !$self->_throw_matches_type( $thrown, $type );
-			my $env = Zuzu::Env->new( parent => $self->_env );
+			my $env = Zuzu::Env->_new_fast( $self->_env );
 			$self->_push_env($env);
 			$env->declare( $catch->name, $thrown, 0 );
 			my $caught_result;
@@ -2421,7 +2433,7 @@ sub eval_var {
 	my $ref = $self->_env->find_ref($node->name);
 	die Zuzu::Error->new_runtime(message => "Undeclared variable '".$node->name."'", file => $node->file, line => $node->line) if !$ref;
 
-	return slot_value($ref);
+	return $$ref;
 }
 
 sub eval_array {
@@ -2865,7 +2877,7 @@ sub _make_lvalue_ref_closure {
 	);
 	$fn->{_native} = sub {
 		my @args = @_;
-		my $call_env = Zuzu::Env->new( parent => $captured_env );
+		my $call_env = Zuzu::Env->_new_fast( $captured_env );
 		$self->_push_env( $call_env );
 		$call_env->declare( '__argc__', 0 + scalar @args, 1, 'Number' );
 
@@ -2989,11 +3001,13 @@ sub _type_name {
 
 	return 'Null' if !defined $x;
 
-	return 'Array' if $self->_unwrap_builtin_collection( $x, 'Array' );
-	return 'Dict' if $self->_unwrap_builtin_collection( $x, 'Dict' );
-	return 'PairList' if $self->_unwrap_builtin_collection( $x, 'PairList' );
-	return 'Set' if $self->_unwrap_builtin_collection( $x, 'Set' );
-	return 'Bag' if $self->_unwrap_builtin_collection( $x, 'Bag' );
+	my ( $array_like, $dict_like, $pairlist_like, $set_like, $bag_like )
+		= $self->_builtin_collection_views($x);
+	return 'Array' if $array_like;
+	return 'Dict' if $dict_like;
+	return 'PairList' if $pairlist_like;
+	return 'Set' if $set_like;
+	return 'Bag' if $bag_like;
 	return 'Regexp' if blessed($x) and $x->isa('Zuzu::Value::Regexp');
 	return 'Regexp' if ref($x) eq 'Regexp';
 	return 'BinaryString' if blessed($x) and $x->isa('Zuzu::Value::BinaryString');
@@ -3719,7 +3733,7 @@ sub _current_match_values {
 sub _evaluate_regexp_replace_expr {
 	my ( $self, $replace_expr, $captures ) = @_;
 
-	my $env = Zuzu::Env->new( parent => $self->_env );
+	my $env = Zuzu::Env->_new_fast( $self->_env );
 	$self->_push_env($env);
 	$env->declare( 'm', Zuzu::Value::Array->new( items => $captures ), 1 );
 	my $value;
@@ -3817,11 +3831,8 @@ sub eval_member_call {
 
 	my $obj = $node->object->evaluate($self);
 	my ( $positional, $named, $named_pairs ) = $self->_evaluate_invocation_args( $node->args // [] );
-	my $array_like = $self->_unwrap_builtin_collection( $obj, 'Array' );
-	my $dict_like = $self->_unwrap_builtin_collection( $obj, 'Dict' );
-	my $pairlist_like = $self->_unwrap_builtin_collection( $obj, 'PairList' );
-	my $set_like = $self->_unwrap_builtin_collection( $obj, 'Set' );
-	my $bag_like = $self->_unwrap_builtin_collection( $obj, 'Bag' );
+	my ( $array_like, $dict_like, $pairlist_like, $set_like, $bag_like )
+		= $self->_builtin_collection_views($obj);
 
 	if (blessed($obj) and $obj->isa('Zuzu::Value::Object')) {
 		my $m = $self->_lookup_method($obj->class, $node->method, 0);
@@ -4232,6 +4243,55 @@ sub _class_is_or_descends {
 	}
 
 	return $FALSE;
+}
+
+sub _collection_builtin_kind {
+	my ( $self, $klass ) = @_;
+
+	while ($klass) {
+		my $kind = $klass->{builtin_kind};
+		if ( defined $kind ) {
+			for my $collection_kind ( @BUILTIN_COLLECTION_KINDS ) {
+				return $kind if $kind eq $collection_kind;
+			}
+		}
+		$klass = $klass->{parent};
+	}
+
+	return undef;
+}
+
+sub _builtin_collection_views {
+	my ( $self, $value ) = @_;
+
+	if ( blessed($value) ) {
+		return ( $value, undef, undef, undef, undef )
+			if $value->isa('Zuzu::Value::Array');
+		return ( undef, $value, undef, undef, undef )
+			if $value->isa('Zuzu::Value::Dict');
+		return ( undef, undef, $value, undef, undef )
+			if $value->isa('Zuzu::Value::PairList');
+		return ( undef, undef, undef, $value, undef )
+			if $value->isa('Zuzu::Value::Set');
+		return ( undef, undef, undef, undef, $value )
+			if $value->isa('Zuzu::Value::Bag');
+
+		if ( $value->isa('Zuzu::Value::Object') ) {
+			my $kind = $self->_collection_builtin_kind( $value->{class} );
+			if ( defined $kind ) {
+				my $wrapped = $value->{slots}{__value};
+				if ( blessed($wrapped) and $wrapped->isa("Zuzu::Value::$kind") ) {
+					return ( $wrapped, undef, undef, undef, undef ) if $kind eq 'Array';
+					return ( undef, $wrapped, undef, undef, undef ) if $kind eq 'Dict';
+					return ( undef, undef, $wrapped, undef, undef ) if $kind eq 'PairList';
+					return ( undef, undef, undef, $wrapped, undef ) if $kind eq 'Set';
+					return ( undef, undef, undef, undef, $wrapped ) if $kind eq 'Bag';
+				}
+			}
+		}
+	}
+
+	return ( undef, undef, undef, undef, undef );
 }
 
 sub _unwrap_builtin_collection {
@@ -4989,7 +5049,15 @@ sub _to_Boolean {
 	my ( $self, $value ) = @_;
 
 	return 0 if !defined $value;
+	if ( !ref($value) ) {
+		my $type = equality_type($value);
+		return 0 if $type eq 'Number' && 0 + $value == 0;
+		return 0 if $type eq 'String' && $value eq '';
+		return 1;
+	}
 	if ( blessed($value) ) {
+		return $value->{value} ? 1 : 0
+			if $value->isa('Zuzu::Value::Boolean');
 		if ( $value->isa('Zuzu::Value::Object') ) {
 			my $method = $self->_lookup_method( $value->class, 'to_Boolean', 0 );
 			if ( $method ) {
@@ -5001,6 +5069,8 @@ sub _to_Boolean {
 			my $result = $value->to_Boolean;
 			return $self->_to_Boolean( $result ) ? 1 : 0;
 		}
+		return $value->is_truthy ? 1 : 0
+			if $value->can('is_truthy');
 	}
 
 	return Zuzu::Util::boolify( $value ) ? 1 : 0;
@@ -5191,6 +5261,7 @@ sub _bind_method {
 	$bound->{_owner_class} = $method->{_owner_class};
 	$bound->{_method_name} = $method->{_method_name} // $method_name;
 	$bound->{_method_kind} = $method->{_method_kind} // 'instance';
+	$bound->{_uses_super} = $method->{_uses_super} ? 1 : 0;
 	$self->{_bound_method_cache}{$method_key} = {
 		method_ref => $method,
 		bound => $bound,
@@ -5267,49 +5338,60 @@ sub _call_method {
 		);
 	}
 
-	my $call_env = Zuzu::Env->new(parent => $fn->closure_env);
+	my $call_env = Zuzu::Env->_new_fast( $fn->{closure_env} );
 	$self->_push_env($call_env);
 	$call_env->declare('self', $self_value, 1);
-	my $super_fn = Zuzu::Value::Function->new(
-		name => 'super',
-		params => [],
-		vararg => '__super_args',
-		body => undef,
-		closure_env => undef,
-	);
-	$super_fn->{_native} = sub {
-		my (@super_args) = @_;
-		my $owner_class = $fn->{_owner_class};
-		my $method_name = $fn->{_method_name};
-		my $is_static = $fn->{_method_kind} && $fn->{_method_kind} eq 'static'
-			? 1
-			: 0;
-		my $next = $self->_lookup_next_method(
-			$owner_class,
-			$method_name,
-			$is_static,
-			$fn,
-		);
-		die Zuzu::Error->new_runtime(
-			message => "No super method available for '$method_name'",
-			file => $file,
-			line => $line,
-		) if !$next;
+	if ( $fn->{_uses_super} ) {
+		# This path runs for methods that reference super; construct the small
+		# native wrapper directly instead of paying Moo constructor/default costs.
+		my $super_fn = bless {
+			name              => 'super',
+			params            => [],
+			vararg            => '__super_args',
+			named_vararg      => undef,
+			param_types       => {},
+			vararg_type       => 'Any',
+			named_vararg_type => 'PairList',
+			param_optional    => {},
+			param_defaults    => {},
+			return_type       => 'Any',
+			body              => undef,
+			closure_env       => undef,
+			is_async          => 0,
+		}, 'Zuzu::Value::Function';
+		$super_fn->{_native} = sub {
+			my (@super_args) = @_;
+			my $owner_class = $fn->{_owner_class};
+			my $method_name = $fn->{_method_name};
+			my $is_static = $fn->{_method_kind} && $fn->{_method_kind} eq 'static'
+				? 1
+				: 0;
+			my $next = $self->_lookup_next_method(
+				$owner_class,
+				$method_name,
+				$is_static,
+				$fn,
+			);
+			die Zuzu::Error->new_runtime(
+				message => "No super method available for '$method_name'",
+				file => $file,
+				line => $line,
+			) if !$next;
 
-		return $self->_call_method( $next, $self_value, \@super_args, $EMPTY_HASH, $EMPTY_ARRAY, $file, $line );
-	};
-	$call_env->declare( 'super', $super_fn, 1 );
+			return $self->_call_method( $next, $self_value, \@super_args, $EMPTY_HASH, $EMPTY_ARRAY, $file, $line );
+		};
+		$call_env->declare( 'super', $super_fn, 1 );
+	}
 
 	if (blessed($self_value) and $self_value->isa('Zuzu::Value::Object')) {
-		for my $slot ( sort CORE::keys %{ $self_value->slots } ) {
-			$call_env->alias_to_ref(
-				$slot,
-				\$self_value->slots->{$slot},
-				$self_value->const->{$slot} ? 1 : 0,
-				$self_value->types->{$slot} // 'Any',
-				$self_value->weak->{$slot} ? 1 : 0,
-			);
-		}
+		my $slots = $self_value->{slots};
+		$call_env->alias_to_ref(
+			$_,
+			\$slots->{$_},
+			$self_value->{const}{$_} ? 1 : 0,
+			$self_value->{types}{$_} // 'Any',
+			$self_value->{weak}{$_} ? 1 : 0,
+		) for CORE::keys %{ $slots };
 	}
 
 	my $ret;
@@ -5324,7 +5406,7 @@ sub _call_method {
 			$line,
 			$arg_static_types,
 		);
-		$ret = $fn->body->evaluate($self);
+		$ret = $fn->{body}->evaluate($self);
 		1;
 	} or do {
 		my $e = $@;
@@ -5397,7 +5479,7 @@ sub _call_function {
 		);
 	}
 
-	my $call_env = Zuzu::Env->new(parent => $fn->closure_env);
+	my $call_env = Zuzu::Env->_new_fast( $fn->{closure_env} );
 	$self->_push_env($call_env);
 
 	my $ret;
@@ -5412,7 +5494,7 @@ sub _call_function {
 			$line,
 			$arg_static_types,
 		);
-		$ret = $fn->body->evaluate($self);
+		$ret = $fn->{body}->evaluate($self);
 		1;
 	} or do {
 		my $e = $@;
@@ -5435,31 +5517,23 @@ sub _call_function {
 sub _assert_return_type {
 	my ( $self, $fn, $value, $file, $line ) = @_;
 
-	my $declared_type = $fn->return_type // 'Any';
+	my $declared_type = $fn->{return_type} // 'Any';
 	return if $declared_type eq 'Any';
 
-	my $name = $fn->name // '<anon>';
+	my $name = $fn->{name} // '<anon>';
 	$self->_assert_declared_type( $declared_type, $value, $file, $line, "return value of '$name'" );
 
 	return;
 }
 
 sub _validate_arity {
-	my ($self, $fn, $args, $named_pairs, $file, $line) = @_;
+	my ($self, $fn, $args, $named_pairs, $file, $line, $binding_plan) = @_;
 
-	my @params = @{ $fn->params // [] };
-	my $required = $fn->{_required_param_count};
-	if ( !defined $required ) {
-		$required = 0;
-		for my $name ( @params ) {
-			my $is_optional = $fn->param_optional->{$name} || exists $fn->param_defaults->{$name};
-			$required++ if !$is_optional;
-		}
-		$fn->{_required_param_count} = $required;
-	}
+	$binding_plan //= $self->_function_binding_plan($fn);
+	my $required = $binding_plan->{required};
 	my $given = scalar @{ $args // [] };
-	my $total = scalar @params;
-	if ( scalar @{ $named_pairs // [] } and ! defined $fn->named_vararg ) {
+	my $total = $binding_plan->{total};
+	if ( scalar @{ $named_pairs // [] } and ! $binding_plan->{has_named_vararg} ) {
 		die Zuzu::Error->new_runtime(
 			message => "Function '".$fn->name."' does not accept named arguments",
 			file => $file,
@@ -5467,7 +5541,7 @@ sub _validate_arity {
 		);
 	}
 
-	if ( defined $fn->vararg ) {
+	if ( $binding_plan->{has_vararg} ) {
 		if ( $given < $required ) {
 			die Zuzu::Error->new_runtime(
 				message => "Too few arguments for function '".$fn->name."' (expected at least $required, got $given)",
@@ -5497,7 +5571,7 @@ sub _bind_function_params {
 	my $binding_plan = $self->_function_binding_plan( $fn );
 	my $params = $binding_plan->{params};
 	my $arg_count = scalar @{ $args // [] };
-	$self->_validate_arity( $fn, $args, $named_pairs, $file, $line );
+	$self->_validate_arity( $fn, $args, $named_pairs, $file, $line, $binding_plan );
 	$call_env->declare( '__argc__', 0 + $arg_count, 1, 'Number' );
 
 	for my $i ( 0 .. $#{ $params } ) {
@@ -5553,17 +5627,24 @@ sub _function_binding_plan {
 	my $plan = $fn->{_binding_plan};
 	return $plan if defined $plan;
 
-	my @params = @{ $fn->params // [] };
+	my @params = @{ $fn->{params} // [] };
 	my @declared_types;
 	my @has_defaults;
 	my @default_exprs;
 	my @default_typecheck_safe;
+	my $required = 0;
+	my $param_types = $fn->{param_types} // {};
+	my $param_optional = $fn->{param_optional} // {};
+	my $param_defaults = $fn->{param_defaults} // {};
+	my $default_typecheck_safe = $fn->{_default_typecheck_safe} // {};
 	for my $name ( @params ) {
-		push @declared_types, $fn->param_types->{$name} // 'Any';
-		my $has_default = exists $fn->param_defaults->{$name} ? 1 : 0;
+		my $has_default = exists $param_defaults->{$name} ? 1 : 0;
+		my $is_optional = $param_optional->{$name} || $has_default;
+		$required++ if !$is_optional;
+		push @declared_types, $param_types->{$name} // 'Any';
 		push @has_defaults, $has_default;
-		push @default_exprs, $has_default ? $fn->param_defaults->{$name} : undef;
-		push @default_typecheck_safe, $fn->{_default_typecheck_safe}{$name} ? 1 : 0;
+		push @default_exprs, $has_default ? $param_defaults->{$name} : undef;
+		push @default_typecheck_safe, $default_typecheck_safe->{$name} ? 1 : 0;
 	}
 
 	$plan = {
@@ -5572,6 +5653,10 @@ sub _function_binding_plan {
 		has_defaults => \@has_defaults,
 		default_exprs => \@default_exprs,
 		default_typecheck_safe => \@default_typecheck_safe,
+		required => $required,
+		total => scalar @params,
+		has_vararg => defined $fn->{vararg} ? 1 : 0,
+		has_named_vararg => defined $fn->{named_vararg} ? 1 : 0,
 	};
 	$fn->{_binding_plan} = $plan;
 
@@ -6032,7 +6117,7 @@ sub _load_module {
 		$MODULE_AST_CACHE{$ast_cache_key} = $ast;
 	}
 
-	my $mod_env = Zuzu::Env->new(parent => undef);
+	my $mod_env = Zuzu::Env->_new_fast(undef);
 	# share builtins by aliasing builtin refs into module env
 	for my $alias ( @{ $self->{_module_builtin_aliases} } ) {
 		$mod_env->alias_to_ref(
@@ -6127,7 +6212,7 @@ sub _load_builtin_module {
 		line => $line,
 	) if ref($symbols) ne 'HASH';
 
-	my $mod_env = Zuzu::Env->new( parent => undef );
+	my $mod_env = Zuzu::Env->_new_fast(undef);
 	for my $name ( sort CORE::keys %{ $symbols } ) {
 		$mod_env->declare( $name, $symbols->{$name}, 1 );
 	}
