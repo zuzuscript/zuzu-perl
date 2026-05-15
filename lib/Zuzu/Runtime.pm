@@ -2279,7 +2279,7 @@ sub eval_debug {
 	my $level = 0 + ( $node->level_expr->evaluate($self) // 0 );
 	return undef if $level > $Zuzu::Runtime::DEBUG_LEVEL;
 	my $message = $node->message_expr->evaluate($self);
-	$message = defined $message ? $message : '';
+	$message = defined $message ? $self->_to_String($message) : '';
 	print STDERR "$message\n";
 
 	return undef;
@@ -4821,21 +4821,78 @@ sub _to_String {
 				line => 0,
 			);
 		}
+		if ( $value->isa('Zuzu::Value::Boolean') ) {
+			return $value->value ? 'true' : 'false';
+		}
 		if ( $value->isa('Zuzu::Value::Regexp') ) {
 			return $value->to_String;
 		}
 		if ( $value->isa('Zuzu::Value::Object') ) {
 			my $method = $self->_lookup_method( $value->class, 'to_String', 0 );
 			if ( $method ) {
-				my $result = $self->_call_method( $method, $value, [], {}, [], '<runtime>', 0 );
-				return defined($result) ? "$result" : '';
+				my $result = $self->_call_method(
+					$method,
+					$value,
+					[],
+					{},
+					[],
+					'<runtime>',
+					0,
+				);
+				return $self->_to_String($result);
 			}
+		}
+		if ( my $array = $self->_unwrap_builtin_collection( $value, 'Array' ) ) {
+			return '['
+				. join( ', ', map { $self->_to_String($_) } $array->resolved_items )
+				. ']';
+		}
+		if ( my $set = $self->_unwrap_builtin_collection( $value, 'Set' ) ) {
+			return '<< '
+				. join( ', ', map { $self->_to_String($_) } $set->resolved_items )
+				. ' >>';
+		}
+		if ( my $bag = $self->_unwrap_builtin_collection( $value, 'Bag' ) ) {
+			return '<<< '
+				. join( ', ', map { $self->_to_String($_) } $bag->resolved_items )
+				. ' >>>';
+		}
+		if ( my $dict = $self->_unwrap_builtin_collection( $value, 'Dict' ) ) {
+			my @parts = map {
+				$_ . ': ' . $self->_to_String( $dict->_value_for_key($_) )
+			} sort CORE::keys %{ $dict->map };
+			return '{' . join( ', ', @parts ) . '}';
+		}
+		if (
+			my $pairlist =
+				$self->_unwrap_builtin_collection( $value, 'PairList' )
+		) {
+			my @parts;
+			for ( my $i = 0; $i < @{ $pairlist->list }; $i++ ) {
+				push @parts,
+					$pairlist->list->[$i][0] . ': '
+					. $self->_to_String( $pairlist->_value_at($i) );
+			}
+			return '{{' . join( ', ', @parts ) . '}}';
+		}
+		if ( $value->isa('Zuzu::Value::Function') ) {
+			return $value->{_is_method}
+				? ( $value->name // '<Method>' )
+				: '<Function>';
+		}
+		if ( $value->isa('Zuzu::Value::Class') ) {
+			return '<Class ' . ( $value->name // 'Object' ) . '>';
+		}
+		if ( $value->isa('Zuzu::Value::Trait') ) {
+			return '<Trait ' . ( $value->name // 'Trait' ) . '>';
+		}
+		if ( $value->isa('Zuzu::Value::Object') ) {
 			my $class_name = $value->class ? $value->class->name : 'Object';
 			return "[$class_name]";
 		}
 		if ( $value->can('to_String') ) {
 			my $result = $value->to_String;
-			return defined($result) ? "$result" : '';
+			return $self->_to_String($result);
 		}
 	}
 

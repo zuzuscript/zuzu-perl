@@ -282,7 +282,7 @@ sub _print_version {
 sub _repl_print_prompt {
 	my ( $continuation ) = @_;
 
-	print STDOUT _repl_prompt_colored($continuation);
+	print STDOUT _repl_prompt_coloured($continuation);
 
 	return;
 }
@@ -300,7 +300,7 @@ sub _repl_prompt_label {
 		: 'zuzu 🦝 💤 > ';
 }
 
-sub _repl_prompt_colored {
+sub _repl_prompt_coloured {
 	my ( $continuation ) = @_;
 
 	my $colour = $continuation ? "\e[1;35m" : "\e[1;36m";
@@ -318,10 +318,10 @@ sub _repl_print_output {
 sub _repl_print_error {
 	my ( $message ) = @_;
 
-	my $color = $message =~ /\bwarn(?:ing)?\b/i
+	my $colour = $message =~ /\bwarn(?:ing)?\b/i
 		? "\e[1;33m"
 		: "\e[1;31m";
-	print STDERR $color, $message, "\e[0m\n";
+	print STDERR $colour, $message, "\e[0m\n";
 
 	return;
 }
