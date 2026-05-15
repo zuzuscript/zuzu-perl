@@ -1,4 +1,3 @@
-requires 'Unicode::Normalize';
 requires 'Moo';
 requires 'Path::Tiny';
 requires 'Archive::Zip';
@@ -10,10 +9,8 @@ requires 'Net::SSLeay';
 requires 'URI';
 requires 'URI::Escape';
 requires 'IPC::Run';
-requires 'IPC::Run3';
 requires 'File::ShareDir';
-requires 'FFI::Platypus';
-requires 'Pod::Text::Termcap';
+requires 'FFI::Platypus', '2.00';
 requires 'Term::ReadLine::Perl';
 requires 'Text::CSV_XS';
 requires 'Types::Serialiser';
@@ -23,6 +20,7 @@ requires 'XML::LibXML';
 requires 'HTML::Selector::XPath';
 requires 'YAML::PP';
 requires 'JSON::MultiValueOrdered';
+requires 'Tie::Hash::MultiValueOrdered';
 requires 'Plack';
 requires 'Regexp::Util';
 requires 'Coro';
@@ -39,7 +37,5 @@ on 'configure' => sub {
 on 'test' => sub {
 	requires 'Test2::V0';
 	requires 'Test2::Require::AuthorTesting';
-	requires 'App::Prove';
 	requires 'HTTP::Request::Common';
-	requires 'TAP::Parser';
 };

@@ -5,7 +5,7 @@ use File::Basename qw( dirname );
 use File::Path qw( make_path );
 use File::Spec;
 use File::Temp qw( tempdir );
-use IPC::Run3 qw( run3 );
+use IPC::Run qw( run );
 use JSON::PP;
 
 my $repo_root = File::Spec->rel2abs( File::Spec->curdir );
@@ -22,7 +22,7 @@ sub run_zuzuzoo {
 	local $ENV{PATH} = File::Spec->catdir( $repo_root, 'bin' )
 		. $Config::Config{path_sep} . $ENV{PATH};
 	local $ENV{ZUZU_COMMAND} = $zuzu_bin;
-	run3 \@cmd, \undef, \$stdout, \$stderr;
+	run \@cmd, '<', \undef, '>', \$stdout, '2>', \$stderr;
 
 	return {
 		exit   => $? >> 8,

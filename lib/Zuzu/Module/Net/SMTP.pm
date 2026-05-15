@@ -7,7 +7,7 @@ our $VERSION = '0.001';
 use B ();
 use IO::Socket::INET ();
 use IO::Socket::SSL qw( SSL_VERIFY_NONE SSL_VERIFY_PEER );
-use IPC::Run3 qw( run3 );
+use IPC::Run qw( run );
 use MIME::Base64 qw( encode_base64 );
 use Scalar::Util qw( blessed );
 use Sys::Hostname qw( hostname );
@@ -417,7 +417,7 @@ sub _run_sendmail {
 	);
 	my ( $stdout, $stderr ) = ( '', '' );
 	my $ok = eval {
-		run3( \@cmd, \$message, \$stdout, \$stderr );
+		run( \@cmd, '<', \$message, '>', \$stdout, '2>', \$stderr );
 		1;
 	};
 	if ( !$ok ) {

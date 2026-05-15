@@ -2,7 +2,7 @@ use Test2::V0;
 
 use File::Find qw( find );
 use File::Spec;
-use IPC::Run3 qw( run3 );
+use IPC::Run qw( run );
 use TAP::Parser;
 
 use Zuzu::Parser;
@@ -22,6 +22,7 @@ my @runtime_lib = (
 	File::Spec->catdir( $repo_root, 'stdlib', 'modules' ),
 );
 my $zuzu_bin = File::Spec->catfile( $repo_root, 'bin', 'zuzu.pl' );
+my $fixture_dir = File::Spec->catdir( $repo_root, 'stdlib', 'test-fixtures' );
 
 my @zzs_files;
 find(
@@ -104,7 +105,9 @@ sub _run_ztest_cli {
 	my $stdout = '';
 	my $stderr = '';
 	my $ran = eval {
-		run3( \@cmd, \undef, \$stdout, \$stderr );
+		local $ENV{ZUZU} = $zuzu_bin;
+		local $ENV{FIXTURE_DIR} = $fixture_dir;
+		run( \@cmd, '<', \undef, '>', \$stdout, '2>', \$stderr );
 		1;
 	};
 	my $status = $?;

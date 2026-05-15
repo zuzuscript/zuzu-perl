@@ -5,8 +5,7 @@ use utf8;
 our $VERSION = '0.001';
 
 use File::Temp qw( tempfile );
-use IPC::Run qw( harness timeout );
-use IPC::Run3 qw( run3 );
+use IPC::Run qw( harness run timeout );
 use Time::HiRes qw( sleep time );
 use Cwd qw( getcwd );
 
@@ -245,16 +244,24 @@ sub _run_command {
 	}
 
 	eval {
-		if ( !defined $error ) {
-			local $SIG{ALRM} = sub {
-				$timed_out = 1;
-				die "run timeout\n";
-			};
-			alarm $timeout if $timeout > 0;
-			$ran_process = 1;
-			run3( $cmd, \$stdin, $out_ref, $err_ref );
-			alarm 0 if $timeout > 0;
-		}
+			if ( !defined $error ) {
+				local $SIG{ALRM} = sub {
+					$timed_out = 1;
+					die "run timeout\n";
+				};
+				alarm $timeout if $timeout > 0;
+				$ran_process = 1;
+				my @run_spec = ( $cmd, '<', \$stdin );
+				push @run_spec, '>', $out_ref if $capture_stdout;
+				if ( $merge_stderr ) {
+					push @run_spec, '2>&1';
+				}
+				elsif ( $capture_stderr ) {
+					push @run_spec, '2>', $err_ref;
+				}
+				run(@run_spec);
+				alarm 0 if $timeout > 0;
+			}
 		1;
 	} or do {
 		$error = "$@";
@@ -814,7 +821,7 @@ Returns the current process ID.
 
 =item * C<run(command, argv?, options?)>
 
-Runs an external process with C<IPC::Run3>. Returns a Dict with
+Runs an external process with C<IPC::Run>. Returns a Dict with
 C<command>, C<exit_code>, C<signal>, C<core_dump>, C<ok>,
 C<stdout>, C<stderr>, and C<error>.
 

@@ -5,7 +5,7 @@ use warnings;
 use Test2::V0;
 use File::Spec;
 use File::Temp qw( tempdir );
-use IPC::Run3 qw( run3 );
+use IPC::Run qw( run );
 
 my $repo_root = File::Spec->rel2abs( File::Spec->catdir( File::Spec->curdir ) );
 my $dispatcher = File::Spec->catfile( $repo_root, 'bin', 'zuzu' );
@@ -38,7 +38,7 @@ sub run_dispatcher {
 	local %ENV = ( PATH => $path );
 	$ENV{ZUZU} = $zuzu if defined $zuzu;
 
-	run3 [ $dispatcher, 'alpha', 'beta' ], undef, \$stdout, \$stderr;
+	run [ $dispatcher, 'alpha', 'beta' ], '<', \undef, '>', \$stdout, '2>', \$stderr;
 
 	return {
 		exit   => $? >> 8,

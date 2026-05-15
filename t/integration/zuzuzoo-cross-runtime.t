@@ -3,7 +3,7 @@ use Test2::V0;
 use Config;
 use File::Spec;
 use File::Temp qw( tempfile tempdir );
-use IPC::Run3 qw( run3 );
+use IPC::Run qw( run );
 use IO::Socket::INET;
 use Socket qw( SOL_SOCKET SO_REUSEADDR );
 
@@ -58,7 +58,7 @@ sub run_zuzu {
 		@args,
 	);
 	my ( $stdout, $stderr ) = ( '', '' );
-	run3 \@cmd, \undef, \$stdout, \$stderr;
+	run \@cmd, '<', \undef, '>', \$stdout, '2>', \$stderr;
 	return {
 		exit   => $? >> 8,
 		stdout => $stdout,

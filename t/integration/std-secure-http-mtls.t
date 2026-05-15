@@ -3,7 +3,7 @@ use Test2::V0;
 use File::Spec;
 use File::Temp qw( tempfile );
 use IO::Socket::INET;
-use IPC::Run3 qw( run3 );
+use IPC::Run qw( run );
 use TAP::Parser;
 
 use Zuzu::Parser;
@@ -140,7 +140,7 @@ for my $case ( @cli ) {
 			if not defined $cmd;
 		my $stdout = '';
 		my $stderr = '';
-		run3 $cmd, undef, \$stdout, \$stderr;
+		run $cmd, '<', \undef, '>', \$stdout, '2>', \$stderr;
 		if ( not is $?, 0, 'runtime exits successfully' ) {
 			diag $stdout if length $stdout;
 			diag $stderr if length $stderr;
