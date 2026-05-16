@@ -28,6 +28,8 @@ requires 'CryptX';
 requires 'Crypt::OpenSSL::PKCS12';
 requires 'Crypt::OpenSSL::X509';
 requires 'Crypt::URandom';
+requires 'DateTime';
+requires 'DateTime::Lite';
 
 on 'configure' => sub {
 	requires 'ExtUtils::MakeMaker';

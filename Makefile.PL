@@ -28,6 +28,8 @@ WriteMakefile(
 		'Crypt::OpenSSL::X509' => 0,
 		'Crypt::URandom' => 0,
 		'CryptX' => 0,
+		'DateTime' => 0,
+		'DateTime::Lite' => 0,
 		'DBD::SQLite' => 0,
 		'DBI' => 0,
 		'FFI::Platypus' => '2.00',

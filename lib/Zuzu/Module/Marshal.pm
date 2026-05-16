@@ -2191,7 +2191,10 @@ sub _encode_time_value {
 	push @{ $state->{objects} }, undef;
 
 	my $epoch = $time->slots->{_epoch};
-	$state->{objects}[$id] = [ KIND_TIME, [ _number_to_cbor($epoch) ] ];
+	my @payload = ( _number_to_cbor($epoch) );
+	push @payload, text_string( $time->slots->{_timezone} )
+		if exists $time->slots->{_timezone};
+	$state->{objects}[$id] = [ KIND_TIME, \@payload ];
 
 	return [ 0, $id ];
 }
@@ -2681,8 +2684,9 @@ sub _fill_object_placeholders {
 			next;
 		}
 		if ( $kind == KIND_TIME ) {
-			$placeholders->[$id]->slots->{_epoch} =
-				_decode_time_payload( $id, $payload );
+			my ( $epoch, $timezone ) = _decode_time_payload( $id, $payload );
+			$placeholders->[$id]->slots->{_epoch} = $epoch;
+			$placeholders->[$id]->slots->{_timezone} = $timezone;
 			next;
 		}
 		if ( $kind == KIND_PATH ) {
@@ -3332,13 +3336,21 @@ sub _new_path_placeholder {
 sub _decode_time_payload {
 	my ( $id, $payload ) = @_;
 
-	die "Time object payload $id must be a one-item array"
-		if ref($payload) ne 'ARRAY' or scalar @{ $payload } != 1;
+	die "Time object payload $id must contain epoch and optional timezone"
+		if ref($payload) ne 'ARRAY'
+		or scalar @{ $payload } < 1
+		or scalar @{ $payload } > 2;
 	my $epoch = $payload->[0];
 	die "Time object payload $id epoch must be a number"
 		if ref($epoch);
+	my $timezone = 'UTC';
+	if ( scalar @{ $payload } > 1 ) {
+		die "Time object payload $id timezone must be a text string"
+			if !is_text_string( $payload->[1] );
+		$timezone = text_value( $payload->[1] );
+	}
 
-	return 0 + $epoch;
+	return ( 0 + $epoch, $timezone );
 }
 
 sub _decode_path_payload {

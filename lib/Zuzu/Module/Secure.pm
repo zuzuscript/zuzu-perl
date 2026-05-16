@@ -27,7 +27,7 @@ use Digest::SHA qw( hmac_sha256 sha256 sha384 sha512 );
 use Encode qw( encode_utf8 );
 use MIME::Base64 qw( decode_base64 encode_base64 );
 use Net::SSLeay ();
-use Time::Piece ();
+use DateTime::Lite ();
 
 use Zuzu::Error;
 use Zuzu::Util::NativeHelpers qw(
@@ -67,6 +67,20 @@ my %CERTIFICATE_CAPABILITIES = map { $_ => 1 } qw(
 	fingerprint-sha512
 	public-key
 	verify-chain
+);
+my %CERTIFICATE_TIME_MONTH = (
+	Jan => 1,
+	Feb => 2,
+	Mar => 3,
+	Apr => 4,
+	May => 5,
+	Jun => 6,
+	Jul => 7,
+	Aug => 8,
+	Sep => 9,
+	Oct => 10,
+	Nov => 11,
+	Dec => 12,
 );
 my %TLS_IDENTITY_CAPABILITIES = map { $_ => 1 } qw( pem pkcs12 );
 my %SIGNING_CAPABILITIES = map { $_ => 1 } qw(
@@ -1605,11 +1619,29 @@ sub _certificate_verify_chain {
 sub _certificate_time {
 	my ( $time_class, $self, $method, $value ) = @_;
 
-	my $tp = Time::Piece->strptime( $value, '%b %d %H:%M:%S %Y %Z' );
+	my ( $mon_name, $day, $hour, $minute, $second, $year, $zone )
+		= $value =~ /\A([A-Z][a-z]{2})\s+(\d{1,2})\s+(\d\d):(\d\d):(\d\d)\s+(\d{4})\s+([A-Z]+)\z/;
+	_error( "$method returned unrecognised certificate time '$value'" )
+		if not defined $mon_name;
+	_error( "$method returned unsupported certificate time zone '$zone'" )
+		if $zone ne 'GMT' and $zone ne 'UTC';
+
+	my $dt = DateTime::Lite->new(
+		year => 0 + $year,
+		month => $CERTIFICATE_TIME_MONTH{$mon_name},
+		day => 0 + $day,
+		hour => 0 + $hour,
+		minute => 0 + $minute,
+		second => 0 + $second,
+		time_zone => '+0000',
+	);
+	_error( "$method returned invalid certificate time '$value'" )
+		if not $dt;
+
 	return native_object(
 		class => $time_class,
 		slots => {
-			_epoch => $tp->epoch,
+			_epoch => $dt->epoch,
 		},
 		const => {
 			_epoch => 1,
