@@ -982,18 +982,16 @@ sub eval_program {
 sub eval_block {
 	my ($self, $node) = @_;
 
+	my $v;
 	if ( $node->{reuse_current_env} ) {
-		my $v;
-		for my $s (@{$node->statements}) { $v = $s->evaluate($self); }
-
+		for ( @{ $node->{statements} } ) { $v = $_->evaluate($self); }
 		return $v;
 	}
 
 	my $env = Zuzu::Env->_new_fast( $self->_env );
 	$self->_push_env($env);
-	my $v;
 	eval {
-		for my $s (@{$node->statements}) { $v = $s->evaluate($self); }
+		for ( @{ $node->{statements} } ) { $v = $_->evaluate($self); }
 		1;
 	} or do {
 		my $e = $@;
@@ -2430,10 +2428,19 @@ sub eval_literal { $_[1]->value }
 sub eval_var {
 	my ($self, $node) = @_;
 
-	my $ref = $self->_env->find_ref($node->name);
-	die Zuzu::Error->new_runtime(message => "Undeclared variable '".$node->name."'", file => $node->file, line => $node->line) if !$ref;
+	my $name = $node->{name};
+	my $env = $self->{_stack}[-1];
+	while ($env) {
+		return ${ $env->{slots}{$name} }
+			if exists $env->{slots}{$name};
+		$env = $env->{parent};
+	}
 
-	return $$ref;
+	die Zuzu::Error->new_runtime(
+		message => "Undeclared variable '$name'",
+		file => $node->file,
+		line => $node->line,
+	);
 }
 
 sub eval_array {
