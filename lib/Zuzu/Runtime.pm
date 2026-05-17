@@ -1911,6 +1911,28 @@ sub eval_function_def {
 	my ($self, $node) = @_;
 
 	my $ref = $self->_env->find_ref($node->name);
+	if ( $node->is_predeclared ) {
+		if (!$ref) {
+			$self->_env->declare(
+				$node->name,
+				Zuzu::Value::Function->new(
+					name => $node->name,
+					params => [],
+					return_type => 'Any',
+					closure_env => $self->_capture_env( $self->_env ),
+					is_bodyless => 1,
+					source_node => $node,
+				),
+				1,
+			);
+			return ${ $self->_env->find_ref($node->name) };
+		}
+		die Zuzu::Error->new_runtime(
+			message => "Redeclaration of '".$node->name."' in the same scope",
+			file => $node->file,
+			line => $node->line,
+		);
+	}
 	if (!$ref) {
 		$self->_env->declare($node->name, undef, 1);
 		$ref = $self->_env->find_ref($node->name);
@@ -1933,8 +1955,87 @@ sub eval_function_def {
 		source_node => $node,
 	);
 	$fn->{_default_typecheck_safe} = { %{ $node->{_default_typecheck_safe} // {} } };
+	if (
+		defined $$ref
+		and blessed($$ref)
+		and $$ref->isa('Zuzu::Value::Function')
+		and $$ref->is_bodyless
+	) {
+		$self->_complete_bodyless_function( $$ref, $fn );
+		return $$ref;
+	}
 	$$ref = $fn;
 
+	return $fn;
+}
+
+sub _complete_bodyless_function {
+	my ( $self, $target, $source ) = @_;
+
+	for my $field (
+		qw(
+			params vararg named_vararg param_types vararg_type named_vararg_type
+			param_optional param_defaults return_type body closure_env is_async
+			source_node
+		)
+	) {
+		$target->$field( $source->$field );
+	}
+	$target->is_bodyless(0);
+	$target->{_default_typecheck_safe} = { %{ $source->{_default_typecheck_safe} // {} } };
+	for my $key (
+		qw(
+			_owner_class _method_name _method_kind _method_source _uses_super
+		)
+	) {
+		$target->{$key} = $source->{$key} if exists $source->{$key};
+	}
+
+	return $target;
+}
+
+sub _function_from_method_decl {
+	my ( $self, $m, $closure_env ) = @_;
+
+	my $fn = Zuzu::Value::Function->new(
+		name => $m->name,
+		params => [ @{ $m->params // [] } ],
+		vararg => $m->vararg,
+		named_vararg => $m->named_vararg,
+		param_types => { %{ $m->param_types // {} } },
+		vararg_type => $m->vararg_type // 'Any',
+		named_vararg_type => $m->named_vararg_type // 'PairList',
+		param_optional => { %{ $m->param_optional // {} } },
+		param_defaults => { %{ $m->param_defaults // {} } },
+		return_type => $m->return_type // 'Any',
+		body => $m->body,
+		closure_env => $closure_env,
+		is_async => $m->is_async ? 1 : 0,
+		is_bodyless => $m->is_predeclared ? 1 : 0,
+		source_node => $m,
+	);
+	$fn->{_default_typecheck_safe} = { %{ $m->{_default_typecheck_safe} // {} } };
+
+	return $fn;
+}
+
+sub _install_method_function {
+	my ( $self, $table, $m, $fn ) = @_;
+
+	if ( exists $table->{ $m->name } ) {
+		my $existing = $table->{ $m->name };
+		if ( $m->is_predeclared or !$existing->is_bodyless ) {
+			die Zuzu::Error->new_runtime(
+				message => "Redeclaration of '".$m->name."' in the same scope",
+				file => $m->file,
+				line => $m->line,
+			);
+		}
+		$self->_complete_bodyless_function( $existing, $fn );
+		return $existing;
+	}
+
+	$table->{ $m->name } = $fn;
 	return $fn;
 }
 
@@ -1996,28 +2097,13 @@ sub eval_class_def {
 	);
 
 	for my $m (@{ $node->methods // [] }) {
-		my $method_fn = Zuzu::Value::Function->new(
-			name => $m->name,
-			params => [ @{ $m->params // [] } ],
-			vararg => $m->vararg,
-			named_vararg => $m->named_vararg,
-			param_types => { %{ $m->param_types // {} } },
-			vararg_type => $m->vararg_type // 'Any',
-			named_vararg_type => $m->named_vararg_type // 'PairList',
-			param_optional => { %{ $m->param_optional // {} } },
-			param_defaults => { %{ $m->param_defaults // {} } },
-			return_type => $m->return_type // 'Any',
-		body => $m->body,
-		closure_env => $self->_env,
-		is_async => $m->is_async ? 1 : 0,
-		);
-		$method_fn->{_default_typecheck_safe} = { %{ $m->{_default_typecheck_safe} // {} } };
+		my $method_fn = $self->_function_from_method_decl( $m, $self->_env );
 		$method_fn->{_owner_class} = $klass;
 		$method_fn->{_method_name} = $m->name;
 		$method_fn->{_method_kind} = 'instance';
 		$method_fn->{_method_source} = 'class';
 		$method_fn->{_uses_super} = $m->uses_super ? 1 : 0;
-		$klass->methods->{ $m->name } = $method_fn;
+		$self->_install_method_function( $klass->methods, $m, $method_fn );
 	}
 	for my $trait ( @traits ) {
 		for my $mname ( sort keys %{ $trait->methods // {} } ) {
@@ -2047,28 +2133,13 @@ sub eval_class_def {
 		}
 	}
 	for my $m (@{ $node->static_methods // [] }) {
-		my $static_fn = Zuzu::Value::Function->new(
-			name => $m->name,
-			params => [ @{ $m->params // [] } ],
-			vararg => $m->vararg,
-			named_vararg => $m->named_vararg,
-			param_types => { %{ $m->param_types // {} } },
-			vararg_type => $m->vararg_type // 'Any',
-			named_vararg_type => $m->named_vararg_type // 'PairList',
-			param_optional => { %{ $m->param_optional // {} } },
-			param_defaults => { %{ $m->param_defaults // {} } },
-			return_type => $m->return_type // 'Any',
-			body => $m->body,
-			closure_env => $self->_env,
-			is_async => $m->is_async ? 1 : 0,
-		);
-		$static_fn->{_default_typecheck_safe} = { %{ $m->{_default_typecheck_safe} // {} } };
+		my $static_fn = $self->_function_from_method_decl( $m, $self->_env );
 		$static_fn->{_owner_class} = $klass;
 		$static_fn->{_method_name} = $m->name;
 		$static_fn->{_method_kind} = 'static';
 		$static_fn->{_method_source} = 'class';
 		$static_fn->{_uses_super} = $m->uses_super ? 1 : 0;
-		$klass->static_methods->{ $m->name } = $static_fn;
+		$self->_install_method_function( $klass->static_methods, $m, $static_fn );
 	}
 
 	my $class_env = Zuzu::Env->_new_fast( $self->_env );
@@ -2109,24 +2180,9 @@ sub eval_trait_def {
 	);
 
 	for my $m ( @{ $node->methods // [] } ) {
-		my $method = Zuzu::Value::Function->new(
-			name => $m->name,
-			params => [ @{ $m->params // [] } ],
-			vararg => $m->vararg,
-			named_vararg => $m->named_vararg,
-			param_types => { %{ $m->param_types // {} } },
-			vararg_type => $m->vararg_type // 'Any',
-			named_vararg_type => $m->named_vararg_type // 'PairList',
-			param_optional => { %{ $m->param_optional // {} } },
-			param_defaults => { %{ $m->param_defaults // {} } },
-			return_type => $m->return_type // 'Any',
-			body => $m->body,
-			closure_env => $self->_env,
-			is_async => $m->is_async ? 1 : 0,
-		);
-		$method->{_default_typecheck_safe} = { %{ $m->{_default_typecheck_safe} // {} } };
+		my $method = $self->_function_from_method_decl( $m, $self->_env );
 		$method->{_uses_super} = $m->uses_super ? 1 : 0;
-		$trait->methods->{ $m->name } = $method;
+		$self->_install_method_function( $trait->methods, $m, $method );
 	}
 
 	my $ref = $self->_env->find_ref($node->name);
@@ -5454,6 +5510,13 @@ sub _call_function {
 			return $fn->{_native}->( @$args, $named, $named_pairs );
 		}
 		return $fn->{_native}->(@$args);
+	}
+	if ( $fn->is_bodyless or !defined $fn->body ) {
+		die Zuzu::Error->new_runtime(
+			message => "Function '".$fn->name."' has no body",
+			file => $file,
+			line => $line,
+		);
 	}
 	if (
 		$fn->is_async

@@ -104,6 +104,11 @@ sub _visit_function_like {
 		}
 	}
 
+	if ( $node->can('is_predeclared') and $node->is_predeclared ) {
+		$self->_pop_scope;
+		return;
+	}
+
 	push @{ $self->_return_type_stack }, ( $node->return_type // 'Any' );
 	$self->_visit_node( $node->body );
 	pop @{ $self->_return_type_stack };

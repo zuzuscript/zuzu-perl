@@ -213,6 +213,26 @@ sub _declare {
 	$scope->{$name} = $info;
 }
 
+sub _declare_function_name {
+	my ( $self, $name, $tok, $is_predeclared ) = @_;
+
+	$self->_err("Keyword '$name' cannot be used as an identifier", $tok) if Zuzu::Util::is_keyword($name);
+	my $scope = $self->{scopes}[-1];
+	if ( exists $scope->{$name} ) {
+		my $existing = $scope->{$name};
+		if ( $is_predeclared or $existing->{kind} ne 'func_predecl' ) {
+			$self->_err("Redeclaration of '$name' in the same scope", $tok);
+		}
+		$scope->{$name} = { kind => 'func', mutable => 0 };
+		return;
+	}
+
+	$scope->{$name} = {
+		kind => $is_predeclared ? 'func_predecl' : 'func',
+		mutable => 0,
+	};
+}
+
 sub _lookup {
 	my ($self, $name) = @_;
 
@@ -534,7 +554,19 @@ sub parse_function_def {
 	my $name_tok = $self->_eat('IDENT');
 	my $name = $name_tok->value;
 
-	$self->_declare($name, { kind => 'func', mutable => 0 }, $name_tok);
+	if ( $self->_maybe('OP', ';') ) {
+		$self->_declare_function_name( $name, $name_tok, 1 );
+		return Zuzu::AST::Stmt::Function->new(
+			file => ( $async_tok // $kw )->file,
+			line => ( $async_tok // $kw )->line,
+			name => $name,
+			params => [],
+			is_async => $async_tok ? 1 : 0,
+			is_predeclared => 1,
+		);
+	}
+
+	$self->_declare_function_name( $name, $name_tok, 0 );
 
 	my ( $params, $vararg, $param_types, $vararg_type, $param_optional, $param_defaults, $named_vararg, $named_vararg_type ) = $self->_parse_param_list;
 	my $return_type = $self->_parse_optional_return_type;
@@ -1012,6 +1044,19 @@ sub parse_method_def {
 	my $kw = $self->_eat('KW', 'method');
 	$start_tok //= $kw;
 	my $name = $self->_eat_member_name;
+
+	if ( $self->_maybe('OP', ';') ) {
+		return Zuzu::AST::Stmt::Method->new(
+			file => $start_tok->file,
+			line => $start_tok->line,
+			name => $name,
+			params => [],
+			body => undef,
+			is_static => $is_static,
+			is_async => $is_async,
+			is_predeclared => 1,
+		);
+	}
 
 	my ( $params, $vararg, $param_types, $vararg_type, $param_optional, $param_defaults, $named_vararg, $named_vararg_type ) = $self->_parse_param_list;
 	my $return_type = $self->_parse_optional_return_type;

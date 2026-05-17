@@ -20,6 +20,7 @@ has 'body' => ( is => 'rw' );
 has 'closure_env' => ( is => 'rw' );
 has 'is_async' => ( is => 'rw', default => sub { 0 } );
 has 'source_node' => ( is => 'rw' );
+has 'is_bodyless' => ( is => 'rw', default => sub { 0 } );
 
 sub is_truthy { 1 }
 

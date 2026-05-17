@@ -20,6 +20,7 @@ has 'param_defaults' => ( is => 'rw', default => sub { {} } );
 has 'return_type' => ( is => 'rw', default => sub { 'Any' } );
 has 'is_async' => ( is => 'rw', default => sub { 0 } );
 has 'uses_super' => ( is => 'rw', default => sub { 0 } );
+has 'is_predeclared' => ( is => 'rw', default => sub { 0 } );
 
 with 'Zuzu::AST::Role::Node';
 
