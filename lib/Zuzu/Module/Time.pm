@@ -33,6 +33,15 @@ my %MONTH_BY_NAME = (
 	nov => 11, november => 11,
 	dec => 12, december => 12,
 );
+my %WEEKDAY_BY_NAME = (
+	sun => 0, sunday => 0,
+	mon => 1, monday => 1,
+	tue => 2, tues => 2, tuesday => 2,
+	wed => 3, weds => 3, wednesday => 3,
+	thu => 4, thur => 4, thurs => 4, thursday => 4,
+	fri => 5, friday => 5,
+	sat => 6, saturday => 6,
+);
 
 sub _floor_epoch {
 	my ( $epoch ) = @_;
@@ -82,12 +91,58 @@ sub _offset_to_zone {
 
 sub _parse_tz_offset {
 	my ( $value ) = @_;
-	return 0 if not defined $value or $value =~ /\A(?:UTC|GMT|Z)\z/i;
+	return 0 if not defined $value or $value =~ /\A(?:UTC|UT|GMT|Z)\z/i;
 	return if $value !~ /\A([+-])(\d\d):?(\d\d)\z/;
 	my ( $sign, $hours, $minutes ) = ( $1, $2, $3 );
 	return if $hours > 23 or $minutes > 59;
 	my $offset = $hours * 3600 + $minutes * 60;
 	return $sign eq '-' ? -$offset : $offset;
+}
+
+sub _strip_trailing_period {
+	my ( $value ) = @_;
+	$value =~ s/\.+\z//;
+	return lc $value;
+}
+
+sub _leap_year {
+	my ( $year ) = @_;
+	return 0 if $year % 4;
+	return 1 if $year % 100;
+	return $year % 400 == 0 ? 1 : 0;
+}
+
+sub _days_in_month {
+	my ( $year, $month ) = @_;
+	return 31 if grep { $_ == $month } qw( 1 3 5 7 8 10 12 );
+	return 30 if grep { $_ == $month } qw( 4 6 9 11 );
+	return _leap_year($year) ? 29 : 28 if $month == 2;
+	return 0;
+}
+
+sub _parse_rfc5322_zone {
+	my ( $zone ) = @_;
+	my $offset = _parse_tz_offset($zone);
+	return $offset if defined $offset;
+
+	my $key = uc $zone;
+	return -5 * 3600 if $key eq 'EST';
+	return -4 * 3600 if $key eq 'EDT';
+	return -6 * 3600 if $key eq 'CST';
+	return -5 * 3600 if $key eq 'CDT';
+	return -7 * 3600 if $key eq 'MST';
+	return -6 * 3600 if $key eq 'MDT';
+	return -8 * 3600 if $key eq 'PST';
+	return -7 * 3600 if $key eq 'PDT';
+
+	if ( length($key) == 1 and $key ne 'J' and $key =~ /\A[A-Z]\z/ ) {
+		my $pos = index 'ABCDEFGHIKLMNOPQRSTUVWXYZ', $key;
+		return if $pos < 0;
+		return ( $pos + 1 ) * 3600 if $pos < 12;
+		return -( $pos - 11 ) * 3600;
+	}
+
+	return;
 }
 
 sub _wrap_timezone {
@@ -320,17 +375,26 @@ sub _parse_rfc3339_or_iso {
 sub _parse_rfc5322 {
 	my ( $value ) = @_;
 	if ( $value =~ /\A
-		(?:[A-Za-z]{3},\s*)?
-		(\d{1,2})\s+([A-Za-z]{3})\s+(\d{4})
-		\s+(\d\d):(\d\d)(?::(\d\d))?
-		\s+(Z|[+-]\d\d:?\d\d|UT|UTC|GMT)
+		(?:([A-Za-z.]+),\s*)?
+		(\d{1,2})\s+([A-Za-z.]+)\s+(\d{2}|\d{4})
+		\s+(\d{1,2}):(\d\d)(?::(\d\d))?
+		\s+([+-]\d\d:?\d\d|[A-Za-z]{1,5})
 	\z/xi ) {
-		my ( $day, $mon, $year, $hour, $minute, $second, $zone ) =
-			( $1, $2, $3, $4, $5, $6 // 0, $7 );
-		my $month = $MONTH_BY_NAME{ lc $mon } or die "Error parsing time\n";
-		my $offset = _parse_tz_offset($zone);
-		$offset = 0 if defined $zone and $zone =~ /\A(?:UT|UTC|GMT)\z/i;
-		die "Error parsing time\n" if !defined $offset;
+		my ( $weekday, $day, $mon, $year, $hour, $minute, $second, $zone ) =
+			( $1, $2, $3, $4, $5, $6, $7 // 0, $8 );
+		if ( defined $weekday ) {
+			_runtime_error("invalid weekday")
+				if !exists $WEEKDAY_BY_NAME{ _strip_trailing_period($weekday) };
+		}
+		my $month = $MONTH_BY_NAME{ _strip_trailing_period($mon) }
+			or _runtime_error("invalid month");
+		$year += $year >= 50 ? 1900 : 2000 if length($year) == 2;
+		_runtime_error("invalid year") if $year < 1;
+		_runtime_error("invalid time") if $hour > 23 or $minute > 59 or $second > 59;
+		_runtime_error("invalid date")
+			if $day < 1 or $day > _days_in_month( $year, $month );
+		my $offset = _parse_rfc5322_zone($zone);
+		_runtime_error("invalid time zone") if !defined $offset;
 		my $zone_name = _offset_to_zone($offset);
 		my $epoch = _same_wall_epoch(
 			$zone_name,
@@ -352,7 +416,7 @@ sub _parse_time_value {
 	return @parsed if @parsed;
 	@parsed = _parse_rfc5322($value);
 	return @parsed if @parsed;
-	die "Error parsing time\n";
+	_runtime_error("Error parsing time");
 }
 
 sub _runtime_error {
