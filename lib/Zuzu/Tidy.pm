@@ -443,6 +443,9 @@ sub _need_space_before {
 	return 0 if $NO_SPACE_AFTER{$pv} and $pv ne '(' and $pv ne '[';
 
 	if ( $v eq '(' or $v eq '[' ) {
+		if ( $pv eq ',' ) {
+			return 1;
+		}
 		if ( $prev->is_KW and $CONTROL_KW{ $prev->value } ) {
 			return 1;
 		}

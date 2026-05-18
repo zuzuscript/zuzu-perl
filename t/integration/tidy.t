@@ -198,6 +198,14 @@ like(
 	'formats split bags one item per line with trailing comma',
 );
 
+my $unpack_tidy = Zuzu::Tidy->tidy(
+	q{let {host,"for":for_id,Number port:=1234,`user-${suffix}`:String user_id,(key): value but weak}:=opts},
+	filename => 'unpack-tidy.zzs',
+);
+like $unpack_tidy,
+	qr/\Alet \{ host, "for": for_id, Number port := 1234, `user-\$\{suffix\}`: String user_id, \(key\): value but weak \} :=\n    opts;\n\z/,
+	'formats declaration unpacking patterns and validates the result';
+
 my $current_syntax_src = <<'SRC';
 let bytes:='abc'
 let bytes2:='a\n'

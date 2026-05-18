@@ -1168,6 +1168,71 @@ sub eval_let {
 	return $val;
 }
 
+sub eval_let_unpack {
+	my ( $self, $node ) = @_;
+
+	my $source = $node->init->evaluate($self);
+	my $dict = $self->_unwrap_builtin_collection( $source, 'Dict' );
+	my $pairlist = $self->_unwrap_builtin_collection( $source, 'PairList' );
+	if ( !$dict and !$pairlist ) {
+		my $type = $self->_type_name($source);
+		die Zuzu::Error->new_runtime(
+			message => "Declaration unpacking expects Dict or PairList, got $type",
+			file => $node->file,
+			line => $node->line,
+		);
+	}
+
+	my @resolved;
+	for my $binding ( @{ $node->bindings // [] } ) {
+		my $key = $binding->{key_expr}->evaluate($self);
+		$key = defined($key) ? "$key" : '';
+		my ( $present, $value );
+		if ($dict) {
+			$present = exists $dict->map->{$key} ? 1 : 0;
+			$value = slot_value( \$dict->map->{$key} ) if $present;
+		}
+		else {
+			$present = $pairlist->contains_key($key) ? 1 : 0;
+			$value = $pairlist->get($key) if $present;
+		}
+
+		if ( !$present and $binding->{has_default} ) {
+			$value = $binding->{default_expr}->evaluate($self);
+		}
+		elsif ( !$present ) {
+			$value = undef;
+		}
+
+		my $declared_type = $binding->{declared_type} // 'Any';
+		$self->_assert_declared_type(
+			$declared_type,
+			$value,
+			$binding->{file} // $node->file,
+			$binding->{line} // $node->line,
+			$binding->{name},
+		) if !$binding->{_skip_type_check};
+
+		push @resolved, [ $binding, $value ];
+	}
+
+	for my $item ( @resolved ) {
+		my ( $binding, $value ) = @{ $item };
+		my $declared_type = $binding->{declared_type} // 'Any';
+		my $is_weak_storage = $binding->{is_weak_storage} ? 1 : 0;
+		my $ref = $self->_env->declare(
+			$binding->{name},
+			undef,
+			$node->is_const ? 1 : 0,
+			$declared_type,
+			$is_weak_storage,
+		);
+		store_value( $ref, $value, $is_weak_storage );
+	}
+
+	return $source;
+}
+
 sub _target_declared_type {
 	my ( $self, $target, $name ) = @_;
 

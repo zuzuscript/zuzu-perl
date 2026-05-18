@@ -32,6 +32,8 @@ function collect () {
 collect(...items);
 let floored := ⌊1.8⌋;
 let ceiled := ⌈1.2⌉;
+let { host, "for": for_id, Number port := 1234, (`x`): x_key but weak } :=
+	{ host: "localhost", "for": 1, port: 8080, x: null };
 async function demo (value) {
 	let task := spawn {
 		return value;
@@ -80,6 +82,10 @@ like $html, qr{<span class="operator">\.\.\.</span><span class="ident">items</sp
 	'spread operator is classified as operator in call arguments';
 like $html, qr{<span class="operator">⌊</span><span class="number">1\.8</span><span class="operator">⌋</span>},
 	'floor brackets are classified as operators around their expression';
+like $html, qr{<span class="keyword">let</span>\s*<span class="operator">\{</span>},
+	'declaration unpacking starts with highlighted let and brace tokens';
+like $html, qr{<span class="string">"for"</span><span class="operator">:</span>},
+	'string keys in declaration unpacking are highlighted';
 like $html, qr{<span class="keyword">async</span>\s*<span class="keyword">function</span>},
 	'async function keywords are highlighted';
 like $html, qr{<span class="keyword">spawn</span>},

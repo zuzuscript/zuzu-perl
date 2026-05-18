@@ -44,6 +44,7 @@ use Zuzu::AST::Stmt::Catch;
 use Zuzu::AST::Stmt::Die;
 use Zuzu::AST::Stmt::Last;
 use Zuzu::AST::Stmt::Let;
+use Zuzu::AST::Stmt::LetUnpack;
 use Zuzu::AST::Stmt::Method;
 use Zuzu::AST::Stmt::Next;
 use Zuzu::AST::Stmt::PostfixIf;
@@ -504,6 +505,10 @@ sub _parse_let_decl {
 	my $kw = $self->_eat('KW');
 	my $is_const = ($kw->value eq 'const') ? 1 : 0;
 
+	if ( $self->{tok}->is_OP('{') ) {
+		return $self->_parse_let_unpack_decl( $kw, $is_const, $expect_semicolon );
+	}
+
 	my ( $declared_type, $name, $name_tok ) = $self->_parse_typed_identifier;
 	my $is_weak_storage = $self->_parse_optional_weak_modifier('declaration');
 
@@ -536,6 +541,136 @@ sub _parse_let_decl {
 		name => $name, init => $init, is_const => $is_const, declared_type => $declared_type,
 		is_weak_storage => $is_weak_storage ? 1 : 0,
 	);
+}
+
+sub _parse_let_unpack_decl {
+	my ( $self, $kw, $is_const, $expect_semicolon ) = @_;
+
+	$self->_eat('OP', '{');
+	my @bindings;
+	my %names;
+	while ( !$self->{tok}->is_OP('}') ) {
+		if ( $self->_maybe('OP', ',') ) {
+			next;
+		}
+		my $binding = $self->_parse_unpack_binding;
+		if ( $names{ $binding->{name} }++ ) {
+			$self->_err(
+				"Duplicate unpacked binding '".$binding->{name}."' in declaration",
+				$binding->{name_tok},
+			);
+		}
+		push @bindings, $binding;
+		$self->_maybe('OP', ',');
+	}
+	$self->_eat('OP', '}');
+	$self->_eat('OP', ':=');
+	my $init = $self->parse_expression;
+	$self->_eat_statement_separator if $expect_semicolon;
+
+	for my $binding ( @bindings ) {
+		$self->_declare(
+			$binding->{name},
+			{
+				kind => $is_const ? 'const' : 'let',
+				mutable => $is_const ? 0 : 1,
+				declared_type => $binding->{declared_type},
+			},
+			$binding->{name_tok},
+		);
+	}
+
+	return Zuzu::AST::Stmt::LetUnpack->new(
+		file => $kw->file,
+		line => $kw->line,
+		bindings => \@bindings,
+		init => $init,
+		is_const => $is_const,
+	);
+}
+
+sub _parse_unpack_binding {
+	my ( $self ) = @_;
+
+	my ( $key_expr, $declared_type, $name, $name_tok );
+	my $binding_file = $self->{tok}->file;
+	my $binding_line = $self->{tok}->line;
+
+	if ( $self->{tok}->is_IDENT ) {
+		my $first = $self->_eat('IDENT');
+		if ( $self->_maybe('OP', ':') ) {
+			$key_expr = Zuzu::AST::Expr::Literal->new(
+				file => $first->file,
+				line => $first->line,
+				value => $first->value,
+			);
+			( $declared_type, $name, $name_tok ) = $self->_parse_typed_identifier;
+		}
+		elsif ( $self->{tok}->is_IDENT ) {
+			my $local_tok = $self->_eat('IDENT');
+			$declared_type = $first->value;
+			$name = $local_tok->value;
+			$name_tok = $local_tok;
+			$key_expr = Zuzu::AST::Expr::Literal->new(
+				file => $local_tok->file,
+				line => $local_tok->line,
+				value => $local_tok->value,
+			);
+		}
+		else {
+			$declared_type = 'Any';
+			$name = $first->value;
+			$name_tok = $first;
+			$key_expr = Zuzu::AST::Expr::Literal->new(
+				file => $first->file,
+				line => $first->line,
+				value => $first->value,
+			);
+		}
+	}
+	elsif ( $self->{tok}->is_KW ) {
+		my $key_tok = $self->_eat('KW');
+		$key_expr = Zuzu::AST::Expr::Literal->new(
+			file => $key_tok->file,
+			line => $key_tok->line,
+			value => $key_tok->value,
+		);
+		$self->_eat('OP', ':');
+		( $declared_type, $name, $name_tok ) = $self->_parse_typed_identifier;
+	}
+	elsif ( $self->{tok}->is_STRING or $self->{tok}->is_type('TEMPLATE') ) {
+		$key_expr = $self->parse_primary;
+		$self->_eat('OP', ':');
+		( $declared_type, $name, $name_tok ) = $self->_parse_typed_identifier;
+	}
+	elsif ( $self->{tok}->is_OP('(') ) {
+		$key_expr = $self->parse_primary;
+		$self->_eat('OP', ':');
+		( $declared_type, $name, $name_tok ) = $self->_parse_typed_identifier;
+	}
+	else {
+		$self->_err("Expected unpacked binding in declaration", $self->{tok});
+	}
+
+	my $default_expr;
+	my $has_default = 0;
+	if ( $self->_maybe('OP', ':=') ) {
+		$default_expr = $self->parse_expression;
+		$has_default = 1;
+	}
+	my $is_weak_storage = $self->_parse_optional_weak_modifier('declaration');
+
+	return {
+		file => $binding_file,
+		line => $binding_line,
+		key_expr => $key_expr,
+		name => $name,
+		name_tok => $name_tok,
+		declared_type => $declared_type,
+		default_expr => $default_expr,
+		has_default => $has_default,
+		is_weak_storage => $is_weak_storage ? 1 : 0,
+	};
 }
 
 sub parse_let {

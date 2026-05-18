@@ -169,6 +169,7 @@ sub _block_can_reuse_current_env {
 		return 1 if defined $addr and $seen->{$addr}++;
 
 		return 0 if $node->isa('Zuzu::AST::Stmt::Let');
+		return 0 if $node->isa('Zuzu::AST::Stmt::LetUnpack');
 		return 0 if $node->isa('Zuzu::AST::Stmt::Function');
 		return 0 if $node->isa('Zuzu::AST::Stmt::Class');
 		return 0 if $node->isa('Zuzu::AST::Stmt::Trait');
@@ -244,6 +245,22 @@ sub _visit_node {
 			}
 		}
 		$self->_declare_typed_name( $node->name, $declared_type );
+		return;
+	}
+
+	if ( $node->isa('Zuzu::AST::Stmt::LetUnpack') ) {
+		for my $binding ( @{ $node->bindings // [] } ) {
+			$self->_visit_node( $binding->{key_expr} );
+			$self->_visit_node( $binding->{default_expr} )
+				if $binding->{has_default};
+		}
+		$self->_visit_node( $node->init ) if defined $node->init;
+		for my $binding ( @{ $node->bindings // [] } ) {
+			$self->_declare_typed_name(
+				$binding->{name},
+				$binding->{declared_type} // 'Any',
+			);
+		}
 		return;
 	}
 
