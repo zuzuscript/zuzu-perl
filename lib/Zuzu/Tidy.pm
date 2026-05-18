@@ -371,6 +371,13 @@ sub _need_space_before {
 		return 0;
 	}
 
+	if ( $v eq '...' and _is_call_spread_operator( $tokens, $i ) ) {
+		return 0;
+	}
+	if ( $pv eq '...' and _is_call_spread_operator( $tokens, $i - 1 ) ) {
+		return 0;
+	}
+
 	if ( $v eq '{' and $pv eq '{' ) {
 		return 0;
 	}
@@ -567,6 +574,19 @@ sub _is_binary_op {
 	return 1;
 }
 
+sub _is_call_spread_operator {
+	my ( $tokens, $i ) = @_;
+	return 0 if $i < 0 or $i > $#$tokens;
+	my $tok = $tokens->[$i];
+	return 0 if ! $tok->is_OP or $tok->value ne '...';
+
+	my $prev = $i > 0 ? $tokens->[ $i - 1 ] : undef;
+	return 0 if !$prev;
+	return 1 if $prev->is_OP and ( $prev->value eq '(' or $prev->value eq ',' );
+
+	return 0;
+}
+
 sub _is_unary_operator {
 	my ( $tokens, $i ) = @_;
 	my $tok = $tokens->[$i];
@@ -598,6 +618,14 @@ sub _paren_needs_inner_space {
 	my @inner = @{$tokens}[ $open_i + 1 .. $close_i - 1 ];
 	if ( @inner == 1 ) {
 		return _is_simple_token( $inner[0] ) ? 0 : 1;
+	}
+	if (
+		@inner == 2
+		and $inner[0]->is_OP
+		and $inner[0]->value eq '...'
+		and _is_simple_token( $inner[1] )
+	) {
+		return 0;
 	}
 
 	return 1;

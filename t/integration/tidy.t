@@ -137,9 +137,13 @@ i++
 let j:=~i
 function takes_optional(options?){return options}
 let args:=[]
+let spread_call:=takes_optional(... args)
 let x:=foo{bar}
 let y:={{foo:1,bar:2}}
 let cfg:={pretty:false,sort_keys:false,color:false,quiet:false,}
+let range_arr:=[1...3]
+let range_set:=<<1...3>>
+let range_bag:=<<<1...3>>>
 let arr:=[1,2,3,]
 let set_single:=<<1,2,3,>>
 let bag_single:=<<<1,2,3,>>>
@@ -153,6 +157,8 @@ like $spacing_tidy, qr/\ni\+\+;\n/, 'keeps postfix unary punctuation tight';
 like $spacing_tidy, qr/\nlet j := ~i;\n/, 'keeps prefix unary punctuation tight';
 like $spacing_tidy, qr/function takes_optional \( options\? \) \{/, 'keeps optional marker tight to parameter name';
 like $spacing_tidy, qr/\nlet args := \[\];\n/, 'keeps space after := for array initialization';
+like $spacing_tidy, qr/\nlet spread_call := takes_optional\(\.\.\.args\);\n/,
+	'keeps call spread operator tight to its expression';
 like $spacing_tidy, qr/\nlet x := foo\{bar\};\n/, 'keeps dict element access tight before {';
 like(
 	$spacing_tidy,
@@ -164,6 +170,12 @@ like(
 	qr/\nlet cfg := \{ pretty: false, sort_keys: false, color: false, quiet: false \};\n/,
 	'removes trailing comma for single-line dict or bag literals',
 );
+like $spacing_tidy, qr/\nlet range_arr := \[ 1 \.\.\. 3 \];\n/,
+	'keeps array ranges formatted as ranges';
+like $spacing_tidy, qr/\nlet range_set := << 1 \.\.\. 3 >>;\n/,
+	'keeps set ranges formatted as ranges';
+like $spacing_tidy, qr/\nlet range_bag := <<< 1 \.\.\. 3 >>>;\n/,
+	'keeps bag ranges formatted as ranges';
 like $spacing_tidy, qr/\nlet arr := \[ 1, 2, 3 \];\n/, 'removes trailing comma for single-line arrays';
 like(
 	$spacing_tidy,

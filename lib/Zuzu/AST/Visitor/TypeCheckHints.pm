@@ -367,6 +367,7 @@ sub _visit_node {
 				$self->_visit_node( $arg->[0] );
 			}
 			$self->_visit_node($expr);
+			next if blessed($expr) and $expr->isa('Zuzu::AST::Expr::Spread');
 			push @arg_types, $self->_expr_static_type($expr)
 				if ref($arg) ne 'ARRAY' or !defined $arg->[0];
 		}
@@ -384,6 +385,11 @@ sub _visit_node {
 			}
 			$self->_visit_node($expr);
 		}
+		return;
+	}
+
+	if ( $node->isa('Zuzu::AST::Expr::Spread') ) {
+		$self->_visit_node( $node->expr );
 		return;
 	}
 

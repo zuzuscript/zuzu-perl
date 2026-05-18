@@ -42,6 +42,19 @@ is $call_y->{_arg_static_types}[0], 'Number',
 is $call_7->{_arg_static_types}[0], 'Number',
 	'call argument from literal carries static type hint';
 
+my $spread_hint_ast = $parser->parse(<<'SRC', 'spread-typecheck-hints.zzs');
+let Number y := 5;
+let items := [];
+function take ( Number n ) {
+	return n;
+}
+take(y, ...items);
+SRC
+
+my $spread_hint_call = $spread_hint_ast->statements->[3]->expr;
+is $spread_hint_call->{_arg_static_types}, ['Number'],
+	'spread arguments do not add ordinary positional static type hints';
+
 my $reuse_block_ast = $parser->parse(<<'SRC', 'block-reuse-hint.zzs');
 let Number counter := 1;
 if (counter == 1) {

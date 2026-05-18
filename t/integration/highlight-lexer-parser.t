@@ -25,6 +25,11 @@ let no := ⊥;
 let none := ∅;
 let data := { meta: { title: "T" } };
 let exists := data @? "/meta/title";
+let items := [];
+function collect () {
+	return items;
+}
+collect(...items);
 let floored := ⌊1.8⌋;
 let ceiled := ⌈1.2⌉;
 async function demo (value) {
@@ -71,6 +76,8 @@ like $html, qr{<span class="operator">∅</span>},
 	'empty set literal is classified as operator';
 like $html, qr{<span class="operator">@\?</span>},
 	'path-exists operator is classified as operator';
+like $html, qr{<span class="operator">\.\.\.</span><span class="ident">items</span>},
+	'spread operator is classified as operator in call arguments';
 like $html, qr{<span class="operator">⌊</span><span class="number">1\.8</span><span class="operator">⌋</span>},
 	'floor brackets are classified as operators around their expression';
 like $html, qr{<span class="keyword">async</span>\s*<span class="keyword">function</span>},

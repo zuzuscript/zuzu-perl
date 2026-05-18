@@ -24,6 +24,7 @@ use Zuzu::AST::Expr::Range;
 use Zuzu::AST::Expr::Set;
 use Zuzu::AST::Expr::Slice;
 use Zuzu::AST::Expr::Spawn;
+use Zuzu::AST::Expr::Spread;
 use Zuzu::AST::Expr::Ternary;
 use Zuzu::AST::Expr::TypeRef;
 use Zuzu::AST::Expr::Unary;
@@ -2043,6 +2044,9 @@ sub parse_primary {
 
 		return $e;
 	}
+	if ( $t->is_OP('...') ) {
+		$self->_err("Spread argument '...' is only valid in call argument lists", $t);
+	}
 	if ( $t->is_OP('⌊') ) {
 		my $tok = $self->_eat('OP', '⌊');
 		my $expr = $self->parse_expression;
@@ -2520,8 +2524,29 @@ sub _parse_invocation_args {
 		# ignore superfluous commas between arguments
 		if ( $self->_maybe('OP', ',') ) { next; }
 
+		if ( $self->{tok}->is_OP('...') ) {
+			my $spread_tok = $self->_eat('OP', '...');
+			my $expr = $self->parse_expression;
+			if ( $self->{tok}->is_OP('...') ) {
+				$self->_err("Range syntax '...' is only valid in collection literals", $self->{tok});
+			}
+			push @args, [
+				undef,
+				Zuzu::AST::Expr::Spread->new(
+					file => $spread_tok->file,
+					line => $spread_tok->line,
+					expr => $expr,
+				),
+			];
+			$self->_maybe('OP', ',');
+			next;
+		}
+
 		my $expr = $self->parse_expression;
 		if ( $self->_maybe('OP', ':') ) {
+			if ( $self->{tok}->is_OP('...') ) {
+				$self->_err("Spread arguments cannot be named", $self->{tok});
+			}
 			my $value_expr = $self->parse_expression;
 			if ( $expr and blessed($expr) and $expr->isa('Zuzu::AST::Expr::Var') ) {
 				push @args, [ $expr->name, $value_expr ];
@@ -2531,6 +2556,9 @@ sub _parse_invocation_args {
 			}
 		}
 		else {
+			if ( $self->{tok}->is_OP('...') ) {
+				$self->_err("Range syntax '...' is only valid in collection literals", $self->{tok});
+			}
 			push @args, [ undef, $expr ];
 		}
 		$self->_maybe('OP', ',');

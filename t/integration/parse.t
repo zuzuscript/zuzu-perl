@@ -192,4 +192,102 @@ SRC
 
 ok $ast_extra_semicolons, 'parser treats standalone semicolons as no-op separators';
 
+my $ast_spread_args = $p->parse(<<'SRC', 'spread-args.zzs');
+function foo () {
+	return 1;
+}
+let items := [];
+let opts := {};
+let obj := {};
+let method_name := "method";
+class Thing;
+foo(...items);
+foo(1, name: 2, ("other"): 3, ...items);
+obj.method(...items);
+obj.(method_name)(...items);
+new Thing(...opts);
+SRC
+
+my $call_spread = $ast_spread_args->statements->[6]->expr;
+isa_ok $call_spread, ['Zuzu::AST::Expr::Call'], 'function spread call';
+is $call_spread->args->[0][0], undef, 'spread call argument is positional';
+isa_ok $call_spread->args->[0][1], ['Zuzu::AST::Expr::Spread'], 'spread argument node';
+isa_ok $call_spread->args->[0][1]->expr, ['Zuzu::AST::Expr::Var'], 'spread wraps inner expression';
+is $call_spread->args->[0][1]->expr->name, 'items', 'spread inner expression is preserved';
+
+my $mixed_call = $ast_spread_args->statements->[7]->expr;
+is scalar @{ $mixed_call->args }, 4, 'mixed call keeps all arguments';
+is $mixed_call->args->[0][0], undef, 'ordinary positional argument stays positional';
+is $mixed_call->args->[1][0], 'name', 'named argument label is preserved';
+ok $mixed_call->args->[2][2], 'computed named argument is marked as computed';
+isa_ok $mixed_call->args->[2][0], ['Zuzu::AST::Expr::Literal'],
+	'computed named argument label expression is preserved';
+isa_ok $mixed_call->args->[3][1], ['Zuzu::AST::Expr::Spread'], 'mixed call has spread marker';
+
+my $member_spread = $ast_spread_args->statements->[8]->expr;
+isa_ok $member_spread, ['Zuzu::AST::Expr::MemberCall'], 'method spread call';
+isa_ok $member_spread->args->[0][1], ['Zuzu::AST::Expr::Spread'], 'method call spread argument';
+
+my $dynamic_spread = $ast_spread_args->statements->[9]->expr;
+isa_ok $dynamic_spread, ['Zuzu::AST::Expr::DynamicMemberCall'], 'dynamic method spread call';
+isa_ok $dynamic_spread->args->[0][1], ['Zuzu::AST::Expr::Spread'], 'dynamic method call spread argument';
+
+my $new_spread = $ast_spread_args->statements->[10]->expr;
+isa_ok $new_spread, ['Zuzu::AST::Expr::New'], 'constructor spread call';
+isa_ok $new_spread->args->[0][1], ['Zuzu::AST::Expr::Spread'], 'constructor spread argument';
+
+my $ast_ranges = $p->parse(<<'SRC', 'ranges-still-collections.zzs');
+let arr := [ 1...3 ];
+let set := << 1...3 >>;
+let bag := <<< 1...3 >>>;
+SRC
+
+isa_ok $ast_ranges->statements->[0]->init->items->[0], ['Zuzu::AST::Expr::Range'],
+	'array literal range still parses as Range';
+isa_ok $ast_ranges->statements->[1]->init->items->[0], ['Zuzu::AST::Expr::Range'],
+	'set literal range still parses as Range';
+isa_ok $ast_ranges->statements->[2]->init->items->[0], ['Zuzu::AST::Expr::Range'],
+	'bag literal range still parses as Range';
+
+like dies {
+	$p->parse(<<'SRC', 'range-in-call.zzs');
+function foo () { return 1; }
+foo(1...3);
+SRC
+}, qr/Range syntax '\.\.\.' is only valid in collection literals/,
+	'range syntax is rejected in call argument lists';
+
+like dies {
+	$p->parse(<<'SRC', 'named-spread.zzs');
+function foo () { return 1; }
+let opts := {};
+foo(a: ...opts);
+SRC
+}, qr/Spread arguments cannot be named/,
+	'named spread is rejected';
+
+like dies {
+	$p->parse(<<'SRC', 'bare-spread.zzs');
+let items := [];
+let x := ...items;
+SRC
+}, qr/Spread argument '\.\.\.' is only valid in call argument lists/,
+	'bare spread expression is rejected';
+
+like dies {
+	$p->parse(<<'SRC', 'array-spread.zzs');
+let items := [];
+let x := [ ...items ];
+SRC
+}, qr/Spread argument '\.\.\.' is only valid in call argument lists/,
+	'array spread literal is rejected';
+
+like dies {
+	$p->parse(<<'SRC', 'dict-spread.zzs');
+let items := {};
+let x := { a: ...items };
+SRC
+}, qr/Spread argument '\.\.\.' is only valid in call argument lists/,
+	'dict value spread is rejected';
+
 done_testing;
