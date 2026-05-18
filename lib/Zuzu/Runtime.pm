@@ -4048,26 +4048,15 @@ sub eval_new {
 	die Zuzu::Error->new_runtime(message => "new expects a Class", file => $node->file, line => $node->line)
 		if !blessed($class_val) or !$class_val->isa('Zuzu::Value::Class');
 
-	my %named;
-	my @positional;
-	for my $p (@{ $node->args // [] }) {
-		my ($k, $expr) = @$p;
-		my $value = $expr->evaluate($self);
-		if ( defined $k ) {
-			$named{$k} = $value;
-		}
-		else {
-			push @positional, $value;
-		}
-	}
+	my ( $positional, $named ) = $self->_evaluate_invocation_args( $node->args // [] );
 
 	my $native_constructor = $self->_native_constructor_for( $class_val );
 	if ( $native_constructor ) {
 		my $object = $native_constructor->(
 			$self,
 			$class_val,
-			\@positional,
-			\%named,
+			$positional,
+			$named,
 			$node->file,
 			$node->line,
 		);
@@ -4082,7 +4071,7 @@ sub eval_new {
 
 	return $self->_make_instance(
 		$class_val,
-		\%named,
+		$named,
 		$node->file,
 		$node->line,
 		1,
@@ -4235,6 +4224,42 @@ sub _evaluate_invocation_args {
 		else {
 			$name = undef;
 			$expr = $entry;
+		}
+		if ( blessed($expr) and $expr->isa('Zuzu::AST::Expr::Spread') ) {
+			my $value = $expr->expr->evaluate($self);
+			my ( $array, $dict, $pairlist ) =
+				$self->_builtin_collection_views($value);
+			if ( $array ) {
+				push @positional, $array->resolved_items;
+				next;
+			}
+			if ( $dict ) {
+				$named //= {};
+				$named_pairs //= [];
+				for my $key ( sort CORE::keys %{ $dict->map } ) {
+					my $item = $dict->_value_for_key($key);
+					$named->{$key} = $item;
+					push @{ $named_pairs }, [ $key, $item ];
+				}
+				next;
+			}
+			if ( $pairlist ) {
+				$named //= {};
+				$named_pairs //= [];
+				for ( my $i = 0; $i < @{ $pairlist->list }; $i++ ) {
+					my $key = $pairlist->list->[$i][0];
+					my $item = $pairlist->_value_at($i);
+					$named->{$key} = $item;
+					push @{ $named_pairs }, [ $key, $item ];
+				}
+				next;
+			}
+			my $type = $self->_type_name($value);
+			die Zuzu::Error->new_runtime(
+				message => "Spread argument expects Array, Dict, or PairList, got $type",
+				file => $expr->file,
+				line => $expr->line,
+			);
 		}
 		my $value = $expr->evaluate($self);
 		if ( $name_is_expr ) {
