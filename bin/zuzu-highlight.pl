@@ -176,6 +176,13 @@ sub class_for_token {
 	my ( $tok, $tokens, $idx ) = @_;
 	my $type = $tok->type // '';
 
+	if ( $type eq 'KW' and ( $tok->value // '' ) eq 'default' ) {
+		my $next = next_significant_token( $tokens, $idx );
+		return 'keyword'
+			if defined $next and $next->type eq 'OP' and ( $next->value // '' ) eq ':';
+
+		return 'operator';
+	}
 	return 'keyword' if $type eq 'KW';
 	return 'boolean' if $type eq 'BOOL';
 	return 'null' if $type eq 'NULL';
@@ -193,6 +200,18 @@ sub class_for_token {
 		}
 
 		return 'ident';
+	}
+
+	return undef;
+}
+
+sub next_significant_token {
+	my ( $tokens, $idx ) = @_;
+
+	for my $look ( $idx + 1 .. $#$tokens ) {
+		my $tok = $tokens->[$look]{token};
+		my $type = $tok->type // '';
+		return $tok if $type ne 'COMMENT' and $type ne 'POD';
 	}
 
 	return undef;

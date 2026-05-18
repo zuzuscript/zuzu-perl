@@ -25,6 +25,7 @@ let no := ⊥;
 let none := ∅;
 let data := { meta: { title: "T" } };
 let exists := data @? "/meta/title";
+let merged := data default { host: "localhost" };
 let items := [];
 function collect () {
 	return items;
@@ -78,6 +79,8 @@ like $html, qr{<span class="operator">∅</span>},
 	'empty set literal is classified as operator';
 like $html, qr{<span class="operator">@\?</span>},
 	'path-exists operator is classified as operator';
+like $html, qr{<span class="operator">default</span>},
+	'default word operator is classified as operator';
 like $html, qr{<span class="operator">\.\.\.</span><span class="ident">items</span>},
 	'spread operator is classified as operator in call arguments';
 like $html, qr{<span class="operator">⌊</span><span class="number">1\.8</span><span class="operator">⌋</span>},
