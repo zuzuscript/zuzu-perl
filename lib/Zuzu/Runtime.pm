@@ -3283,6 +3283,10 @@ sub _switch_matches {
 sub _eval_binary_op_values {
 	my ( $self, $op, $l, $r, $file, $line ) = @_;
 
+	if ( $op eq 'default' ) {
+		return $self->_default_collection_values( $l, $r, $file, $line );
+	}
+
 	if ($op eq '+' ) { return $self->_to_Number($l) + $self->_to_Number($r); }
 	if ($op eq '-' ) { return $self->_to_Number($l) - $self->_to_Number($r); }
 	if ($op eq '*' || $op eq '×') { return $self->_to_Number($l) * $self->_to_Number($r); }
@@ -3463,6 +3467,91 @@ sub _eval_binary_op_values {
 	}
 
 	die Zuzu::Error->new_runtime(message => "Unsupported binary op '$op'", file => $file, line => $line);
+}
+
+sub _default_collection_values {
+	my ( $self, $left, $right, $file, $line ) = @_;
+
+	my $right_dict = $self->_unwrap_builtin_collection( $right, 'Dict' );
+	my $right_pairlist = $self->_unwrap_builtin_collection( $right, 'PairList' );
+	if ( !$right_dict and !$right_pairlist ) {
+		my $type = $self->_type_name($right);
+		die Zuzu::Error->new_runtime(
+			message => "TypeException: default operator right operand expects Dict or PairList, got $type",
+			file => $file,
+			line => $line,
+		);
+	}
+
+	my $left_dict;
+	my $left_pairlist;
+	if ( defined $left ) {
+		$left_dict = $self->_unwrap_builtin_collection( $left, 'Dict' );
+		$left_pairlist = $self->_unwrap_builtin_collection( $left, 'PairList' );
+		if ( !$left_dict and !$left_pairlist ) {
+			my $type = $self->_type_name($left);
+			die Zuzu::Error->new_runtime(
+				message => "TypeException: default operator left operand expects Dict, PairList, or Null, got $type",
+				file => $file,
+				line => $line,
+			);
+		}
+	}
+
+	if ($left_dict) {
+		my $result = $left_dict->copy;
+		if ($right_dict) {
+			for my $key ( sort CORE::keys %{ $right_dict->map } ) {
+				next if $result->exists($key);
+				$result->_store_key(
+					$key,
+					$right_dict->_value_for_key($key),
+					$right_dict->weak->{$key} ? 1 : 0,
+				);
+			}
+		}
+		else {
+			for ( my $i = 0; $i < @{ $right_pairlist->list }; $i++ ) {
+				my $key = $right_pairlist->list->[$i][0];
+				next if $result->exists($key);
+				$result->_store_key(
+					$key,
+					$right_pairlist->_value_at($i),
+					$right_pairlist->weak->[$i] ? 1 : 0,
+				);
+			}
+		}
+
+		return $result;
+	}
+
+	my $source = $left_pairlist // Zuzu::Value::PairList->new( list => [] );
+	my $result = $source->copy;
+	my %original_key = map { $_->[0] => 1 } @{ $source->list };
+
+	if ($right_dict) {
+		for my $key ( sort CORE::keys %{ $right_dict->map } ) {
+			next if $original_key{$key};
+			$result->_append(
+				$key,
+				$right_dict->_value_for_key($key),
+				$right_dict->weak->{$key} ? 1 : 0,
+			);
+		}
+	}
+	else {
+		for ( my $i = 0; $i < @{ $right_pairlist->list }; $i++ ) {
+			my $key = $right_pairlist->list->[$i][0];
+			next if $original_key{$key};
+			$result->_append(
+				$key,
+				$right_pairlist->_value_at($i),
+				$right_pairlist->weak->[$i] ? 1 : 0,
+			);
+		}
+	}
+
+	return $result;
 }
 
 sub _eval_path_operator {

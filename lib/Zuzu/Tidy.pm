@@ -18,6 +18,7 @@ my %BINARY_OP = map { $_ => 1 } qw(
 	× ÷ ≠ ≤ ≥ ≡ ≢ ≶ ≷ ⋀ ⋁ ⊻ ⊼
 	in ∈ ∉ union ⋃ intersection ⋂ subsetof ⊂ supersetof ⊃ equivalentof ⊂⊃ ∖
 	instanceof does can
+	default
 	& | ^
 	@ @? @@
 	:= ~= += -= *= /= ×= ÷= **= _= ?:=

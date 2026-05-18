@@ -1760,6 +1760,8 @@ sub _prec {
 
 	return 3 if $op eq 'and' || $op eq '⋀' || $op eq 'nand' || $op eq '⊼';
 
+	return 4 if $op eq 'default';
+
 	return 4 if $op eq '==' || $op eq '≡' || $op eq '!=' || $op eq '≢';
 
 	return 5 if $op eq '=' || $op eq '≠' || $op eq '<' || $op eq '>' || $op eq '<=' || $op eq '≤' || $op eq '>=' || $op eq '≥' || $op eq '<=>' || $op eq '≶' || $op eq '≷' || $op eq 'eq' || $op eq 'ne' || $op eq 'gt' || $op eq 'ge' || $op eq 'lt' || $op eq 'le' || $op eq 'cmp' || $op eq 'eqi' || $op eq 'nei' || $op eq 'gti' || $op eq 'gei' || $op eq 'lti' || $op eq 'lei' || $op eq 'cmpi' || $op eq 'in' || $op eq '∈' || $op eq '∉' || $op eq 'subsetof' || $op eq '⊂' || $op eq 'supersetof' || $op eq '⊃' || $op eq 'equivalentof' || $op eq '⊂⊃' || $op eq 'instanceof' || $op eq 'does' || $op eq 'can' || $op eq '~' || $op eq '@' || $op eq '@?' || $op eq '@@';

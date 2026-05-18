@@ -1278,6 +1278,7 @@ sub _source_binary_prec {
 	return 1 if $op eq 'or' || $op eq '⋁';
 	return 2 if $op eq 'xor' || $op eq '⊻';
 	return 3 if $op eq 'and' || $op eq '⋀' || $op eq 'nand' || $op eq '⊼';
+	return 4 if $op eq 'default';
 	return 4 if $op eq '==' || $op eq '≡' || $op eq '!=' || $op eq '≢';
 	return 5 if $op =~ /\A(?:=|eq|ne|gt|ge|lt|le|cmp)\z/;
 	return 5 if $op =~ /\A(?:eqi|nei|gti|gei|lti|lei|cmpi)\z/;

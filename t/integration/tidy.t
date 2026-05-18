@@ -138,6 +138,7 @@ let j:=~i
 function takes_optional(options?){return options}
 let args:=[]
 let spread_call:=takes_optional(... args)
+let defaults:={a:1}default{b:2}
 let x:=foo{bar}
 let y:={{foo:1,bar:2}}
 let cfg:={pretty:false,sort_keys:false,color:false,quiet:false,}
@@ -159,6 +160,8 @@ like $spacing_tidy, qr/function takes_optional \( options\? \) \{/, 'keeps optio
 like $spacing_tidy, qr/\nlet args := \[\];\n/, 'keeps space after := for array initialization';
 like $spacing_tidy, qr/\nlet spread_call := takes_optional\(\.\.\.args\);\n/,
 	'keeps call spread operator tight to its expression';
+like $spacing_tidy, qr/\nlet defaults := \{ a: 1 \} default \{ b: 2 \};\n/,
+	'formats default operator spacing';
 like $spacing_tidy, qr/\nlet x := foo\{bar\};\n/, 'keeps dict element access tight before {';
 like(
 	$spacing_tidy,
