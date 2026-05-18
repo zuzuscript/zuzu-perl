@@ -4,7 +4,7 @@ use utf8;
 
 our $VERSION = '0.001';
 
-use Scalar::Util qw( blessed refaddr );
+use Scalar::Util qw( blessed );
 
 use Moo;
 
@@ -80,10 +80,6 @@ sub _visit_block_with_scope {
 sub _visit_function_like {
 	my ( $self, $node ) = @_;
 
-	if ( $node->isa('Zuzu::AST::Stmt::Method') ) {
-		$node->uses_super( $self->_node_references_super($node) ? 1 : 0 );
-	}
-
 	$self->_push_scope;
 
 	for my $name ( @{ $node->params // [] } ) {
@@ -117,104 +113,6 @@ sub _visit_function_like {
 	return;
 }
 
-sub _node_references_super {
-	my ( $self, $node, $seen ) = @_;
-
-	return 0 if !defined $node;
-	$seen //= {};
-
-	if ( blessed($node) ) {
-		my $addr = refaddr($node);
-		return 0 if defined $addr and $seen->{$addr}++;
-		return 1
-			if $node->isa('Zuzu::AST::Expr::Var')
-			and $node->name eq 'super';
-
-		for my $value ( values %{ $node } ) {
-			return 1 if $self->_node_references_super( $value, $seen );
-		}
-
-		return 0;
-	}
-
-	if ( ref($node) eq 'ARRAY' ) {
-		my $addr = refaddr($node);
-		return 0 if defined $addr and $seen->{$addr}++;
-		for my $value ( @{ $node } ) {
-			return 1 if $self->_node_references_super( $value, $seen );
-		}
-		return 0;
-	}
-
-	if ( ref($node) eq 'HASH' ) {
-		my $addr = refaddr($node);
-		return 0 if defined $addr and $seen->{$addr}++;
-		for my $value ( values %{ $node } ) {
-			return 1 if $self->_node_references_super( $value, $seen );
-		}
-		return 0;
-	}
-
-	return 0;
-}
-
-sub _block_can_reuse_current_env {
-	my ( $self, $node, $seen ) = @_;
-
-	return 1 if !defined $node;
-	$seen //= {};
-
-	if ( blessed($node) ) {
-		my $addr = refaddr($node);
-		return 1 if defined $addr and $seen->{$addr}++;
-
-		return 0 if $node->isa('Zuzu::AST::Stmt::Let');
-		return 0 if $node->isa('Zuzu::AST::Stmt::LetUnpack');
-		return 0 if $node->isa('Zuzu::AST::Stmt::Function');
-		return 0 if $node->isa('Zuzu::AST::Stmt::Class');
-		return 0 if $node->isa('Zuzu::AST::Stmt::Trait');
-		return 0 if $node->isa('Zuzu::AST::Stmt::Import');
-		return 0 if $node->isa('Zuzu::AST::Stmt::Catch');
-		return 0
-			if $node->isa('Zuzu::AST::Stmt::For')
-			and $node->declare_loop_var;
-
-		return 0 if $node->isa('Zuzu::AST::Expr::Call');
-		return 0 if $node->isa('Zuzu::AST::Expr::MemberCall');
-		return 0 if $node->isa('Zuzu::AST::Expr::DynamicMemberCall');
-		return 0 if $node->isa('Zuzu::AST::Expr::New');
-		return 0 if $node->isa('Zuzu::AST::Expr::Function');
-		return 0 if $node->isa('Zuzu::AST::Expr::Spawn');
-		return 0 if $node->isa('Zuzu::AST::Expr::Await');
-
-		for my $value ( values %{ $node } ) {
-			return 0 if !$self->_block_can_reuse_current_env( $value, $seen );
-		}
-
-		return 1;
-	}
-
-	if ( ref($node) eq 'ARRAY' ) {
-		my $addr = refaddr($node);
-		return 1 if defined $addr and $seen->{$addr}++;
-		for my $value ( @{ $node } ) {
-			return 0 if !$self->_block_can_reuse_current_env( $value, $seen );
-		}
-		return 1;
-	}
-
-	if ( ref($node) eq 'HASH' ) {
-		my $addr = refaddr($node);
-		return 1 if defined $addr and $seen->{$addr}++;
-		for my $value ( values %{ $node } ) {
-			return 0 if !$self->_block_can_reuse_current_env( $value, $seen );
-		}
-		return 1;
-	}
-
-	return 1;
-}
-
 sub _visit_node {
 	my ( $self, $node ) = @_;
 
@@ -232,7 +130,6 @@ sub _visit_node {
 		for my $stmt ( @{ $node->statements // [] } ) {
 			$self->_visit_node($stmt);
 		}
-		$node->reuse_current_env( $self->_block_can_reuse_current_env($node) ? 1 : 0 );
 		return;
 	}
 

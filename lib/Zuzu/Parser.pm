@@ -8,9 +8,86 @@ use Zuzu::Error;
 use Zuzu::Lexer;
 use Zuzu::Parser::_Impl;
 use Zuzu::AST::Visitor::TypeCheckHints;
+use Zuzu::AST::Visitor::SuperHints;
+use Zuzu::AST::Visitor::LexicalEnvHints;
 use Zuzu::Util ();
 
 use Moo;
+
+has 'disabled_visitors' => ( is => 'rw', default => sub { [] } );
+
+my @VISITOR_CLASSES = (
+	TypeCheckHints => 'Zuzu::AST::Visitor::TypeCheckHints',
+	SuperHints => 'Zuzu::AST::Visitor::SuperHints',
+	LexicalEnvHints => 'Zuzu::AST::Visitor::LexicalEnvHints',
+);
+my %VISITOR_CLASS_FOR = @VISITOR_CLASSES;
+
+sub available_visitors {
+	return map { $VISITOR_CLASSES[ $_ * 2 ] } 0 .. ( @VISITOR_CLASSES / 2 ) - 1;
+}
+
+sub normalize_disabled_visitors {
+	my ( $class, @names ) = @_;
+
+	my @out;
+	my %seen;
+	for my $name ( @names ) {
+		next if !defined $name or $name eq '';
+		if ( !exists $VISITOR_CLASS_FOR{$name} ) {
+			my $expected = join ', ', $class->available_visitors;
+			die "Unknown visitor '$name' (expected one of: $expected)";
+		}
+		push @out, $name if !$seen{$name}++;
+	}
+
+	return @out;
+}
+
+sub _disabled_visitor_set {
+	my ( $self ) = @_;
+
+	return {
+		map { $_ => 1 }
+		Zuzu::Parser->normalize_disabled_visitors(
+			@{ $self->disabled_visitors // [] },
+		)
+	};
+}
+
+sub visitor_cache_key {
+	my ( $self ) = @_;
+
+	return join ',',
+		Zuzu::Parser->normalize_disabled_visitors(
+			@{ $self->disabled_visitors // [] },
+		);
+}
+
+sub apply_visitors {
+	my ( $self, $ast ) = @_;
+
+	my $disabled = $self->_disabled_visitor_set;
+	for ( my $i = 0; $i < @VISITOR_CLASSES; $i += 2 ) {
+		my ( $name, $class ) = @VISITOR_CLASSES[ $i, $i + 1 ];
+		next if $disabled->{$name};
+		$class->new->apply($ast);
+	}
+
+	return $ast;
+}
+
+sub BUILD {
+	my ( $self ) = @_;
+
+	$self->disabled_visitors([
+		Zuzu::Parser->normalize_disabled_visitors(
+			@{ $self->disabled_visitors // [] },
+		),
+	]);
+
+	return;
+}
 
 sub parse {
 	my ($self, $src, $filename) = @_;
@@ -21,7 +98,7 @@ sub parse {
 	my $ast;
 	eval {
 		$ast = $p->parse_program;
-		Zuzu::AST::Visitor::TypeCheckHints->new->apply( $ast );
+		$self->apply_visitors($ast);
 		1;
 	} or do {
 		my $err = $@;

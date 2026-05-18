@@ -100,6 +100,43 @@ like $help_output, qr/--no-cache/,
 	'help documents --no-cache';
 like $help_output, qr/--clear-cache/,
 	'help documents --clear-cache';
+like $help_output, qr/--no-visitor/,
+	'help documents --no-visitor';
+
+my $bad_visitor_cmd = "$^X $zuzu_bin --no-visitor=NoSuchVisitor $script 2>&1";
+my $bad_visitor_output = qx{$bad_visitor_cmd};
+my $bad_visitor_exit = $? >> 8;
+is $bad_visitor_exit, 2, 'unknown visitor name is rejected';
+like $bad_visitor_output, qr/Unknown visitor 'NoSuchVisitor'/,
+	'unknown visitor error names the bad visitor';
+
+my $super_script = File::Spec->catfile( $tmpdir, 'super.zzs' );
+open my $super_fh, '>:encoding(UTF-8)', $super_script
+	or die "Could not create $super_script: $!";
+print {$super_fh} <<'SRC';
+class Parent {
+	method value () {
+		return "parent";
+	}
+}
+class Child extends Parent {
+	method value () {
+		return super() _ ":child";
+	}
+}
+function __main__ (args) {
+	let child := new Child();
+	die child.value();
+}
+SRC
+close $super_fh;
+
+my $no_super_cmd = "$^X $zuzu_bin --no-visitor=SuperHints $super_script 2>&1";
+my $no_super_output = qx{$no_super_cmd};
+my $no_super_exit = $? >> 8;
+isnt $no_super_exit, 0, '--no-visitor disables the named visitor';
+like $no_super_output, qr/Undeclared variable 'super'/,
+	'disabling SuperHints prevents super dispatch setup';
 
 my $inc_dir = File::Spec->catdir( $tmpdir, 'modules', 'extras' );
 make_path( $inc_dir );

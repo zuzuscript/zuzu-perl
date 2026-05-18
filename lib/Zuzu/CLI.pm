@@ -31,12 +31,13 @@ sub run {
 		return 2;
 	}
 
-	my ( $deny, $deny_module_list, $preload, $value_error )
+	my ( $deny, $deny_module_list, $preload, $disabled_visitors, $value_error )
 		= _normalize_option_lists($options);
 	if ( defined $value_error ) {
 		_print_usage($value_error);
 		return 2;
 	}
+	$options->{disabled_visitors} = $disabled_visitors;
 
 	Zuzu::Runtime->clear_persistent_ast_cache if $options->{clear_cache};
 
@@ -63,6 +64,7 @@ sub run {
 		deny => $deny,
 		deny_modules => $deny_module_list,
 		persistent_ast_cache => !$options->{no_cache},
+		disabled_visitors => $disabled_visitors,
 	);
 
 	if ( $options->{repl_mode} ) {
@@ -70,7 +72,7 @@ sub run {
 		return 0;
 	}
 
-	my $parser = Zuzu::Parser->new;
+	my $parser = Zuzu::Parser->new( disabled_visitors => $disabled_visitors );
 	my $ok = eval {
 		my $ast = $parser->parse( $source, $script );
 		$runtime->evaluate($ast);
@@ -110,6 +112,7 @@ sub _parse_options {
 		deny_modules => [],
 		inline_snippets => [],
 		preload_modules => [],
+		no_visitors => [],
 		no_cache => 0,
 		clear_cache => 0,
 		repl_mode => 0,
@@ -129,6 +132,7 @@ sub _parse_options {
 		'I=s@' => $options->{include_dirs},
 		'deny=s@' => $options->{deny_capabilities},
 		'denymodule=s@' => $options->{deny_modules},
+		'no-visitor=s@' => $options->{no_visitors},
 		'e=s@' => $options->{inline_snippets},
 		'M=s@' => $options->{preload_modules},
 		'no-cache' => \$options->{no_cache},
@@ -162,14 +166,28 @@ sub _normalize_option_lists {
 	my @deny = _flatten_trimmed_csv( @{ $options->{deny_capabilities} } );
 	my @deny_module_list = _flatten_trimmed_csv( @{ $options->{deny_modules} } );
 	my @preload = _flatten_trimmed_csv( @{ $options->{preload_modules} } );
+	my @disabled_visitors = _flatten_trimmed_csv( @{ $options->{no_visitors} } );
 
-	for my $entry ( @deny, @deny_module_list, @preload ) {
+	for my $entry ( @deny, @deny_module_list, @preload, @disabled_visitors ) {
 		if ( $entry =~ /\A\s*\z/ ) {
-			return ( undef, undef, undef, 'Option values may not contain whitespace only' );
+			return ( undef, undef, undef, undef, 'Option values may not contain whitespace only' );
 		}
 	}
 
-	return ( \@deny, \@deny_module_list, \@preload, undef );
+	my @known_visitors;
+	eval {
+		@known_visitors = Zuzu::Parser->normalize_disabled_visitors(
+			@disabled_visitors,
+		);
+		1;
+	} or do {
+		my $error = $@;
+		chomp $error;
+		$error =~ s/ at \S+ line \d+\.?\z//;
+		return ( undef, undef, undef, undef, $error );
+	};
+
+	return ( \@deny, \@deny_module_list, \@preload, \@known_visitors, undef );
 }
 
 sub _flatten_trimmed_csv {
@@ -240,6 +258,7 @@ sub _print_usage {
 	print STDERR "  -I/path/to/lib         add module include directory\n";
 	print STDERR "  --deny=CAP             deny runtime capability (repeatable)\n";
 	print STDERR "  --denymodule=MODULE    deny a specific module (repeatable)\n";
+	print STDERR "  --no-visitor=NAME      disable an AST visitor (repeatable)\n";
 	print STDERR "  -e 'code'              evaluate inline code (repeatable)\n";
 	print STDERR "  -Mmodule               preload module with wildcard import\n";
 	print STDERR "  --no-cache             disable the persistent module AST cache\n";
@@ -260,6 +279,7 @@ sub _print_version {
 		deny => $deny,
 		deny_modules => $deny_module_list,
 		persistent_ast_cache => !$options->{no_cache},
+		disabled_visitors => $options->{disabled_visitors} // [],
 	);
 
 	print "zuzu version $Zuzu::VERSION\n";

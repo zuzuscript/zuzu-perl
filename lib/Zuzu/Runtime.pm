@@ -22,7 +22,6 @@ use Zuzu::Parser;
 use Zuzu::Parser::_Impl;
 use Zuzu::Runtime::Async::Scheduler;
 use Zuzu::Util ();
-use Zuzu::AST::Visitor::TypeCheckHints;
 use Zuzu::Value::Array;
 use Zuzu::Value::Class;
 use Zuzu::Value::Dict;
@@ -50,7 +49,7 @@ no warnings 'recursion';
 
 our %MODULE_AST_CACHE;
 our %MODULE_PATH_CACHE;
-our $PERSISTENT_AST_CACHE_VERSION = 3;
+our $PERSISTENT_AST_CACHE_VERSION = 4;
 our $PERSISTENT_AST_CACHE_MAGIC = 'ZUZU-PERL-AST-CACHE';
 our $PERSISTENT_AST_CACHE_MAX_SIZE = 100 * 1024 * 1024;
 our $PERSISTENT_AST_CACHE_MAX_AGE = 30 * 24 * 60 * 60;
@@ -70,6 +69,7 @@ has 'forbid' => ( is => 'rw', default => sub { [] } );
 has 'deny' => ( is => 'rw', default => sub { [] } );
 has 'allow' => ( is => 'rw' );
 has 'persistent_ast_cache' => ( is => 'rw', default => sub { 1 } );
+has 'disabled_visitors' => ( is => 'rw', default => sub { [] } );
 has 'builtin' => ( is => 'rw', default => sub {
 	return {
 		'std/data/json' => 'Zuzu::Module::JSON',
@@ -190,7 +190,14 @@ sub BUILD {
 			map { _absolute_module_path($_) } @{ $self->lib // [] }
 		),
 	]);
-	$self->{_parser} = Zuzu::Parser->new;
+	$self->disabled_visitors([
+		Zuzu::Parser->normalize_disabled_visitors(
+			@{ $self->disabled_visitors // [] },
+		),
+	]);
+	$self->{_parser} = Zuzu::Parser->new(
+		disabled_visitors => $self->disabled_visitors,
+	);
 	$self->{_global} = Zuzu::Env->_new_fast(undef);
 	$self->{_stack} = [ $self->{_global} ];
 	$self->{_modules} = {}; # module => env
@@ -271,7 +278,7 @@ sub parse_with_current_scope {
 	my $ast;
 	eval {
 		$ast = $parser->parse_program;
-		Zuzu::AST::Visitor::TypeCheckHints->new->apply( $ast );
+		$self->{_parser}->apply_visitors($ast);
 		1;
 	} or do {
 		my $error = $@;
@@ -412,6 +419,34 @@ sub _global_function {
 }
 
 sub _env { $_[0]->{_stack}[-1] }
+
+sub _var_ref_for_node {
+	my ( $self, $node ) = @_;
+
+	my $name = $node->{name};
+	if (
+		defined $node->{_env_depth}
+		and defined $node->{_binding_name}
+		and $node->{_binding_name} eq $name
+	) {
+		my $env = $self->{_stack}[-1];
+		for ( 1 .. $node->{_env_depth} ) {
+			last if !defined $env;
+			$env = $env->{parent};
+		}
+		return ( $env->{slots}{$name}, $env )
+			if defined $env and exists $env->{slots}{$name};
+	}
+
+	my $env = $self->{_stack}[-1];
+	while ($env) {
+		return ( $env->{slots}{$name}, $env )
+			if exists $env->{slots}{$name};
+		$env = $env->{parent};
+	}
+
+	return;
+}
 
 sub _push_env { push @{$_[0]->{_stack}}, $_[1] }
 
@@ -1237,6 +1272,8 @@ sub _target_declared_type {
 	my ( $self, $target, $name ) = @_;
 
 	return $target->{declared_type} if defined $target->{declared_type};
+	return $target->{env}{types}{$name} // 'Any'
+		if defined $name and defined $target->{env};
 	return $self->_env->declared_type_for($name) if defined $name;
 
 	return 'Any';
@@ -1345,14 +1382,17 @@ sub _resolve_lvalue_target {
 	my ($self, $expr) = @_;
 
 	if (blessed($expr) and $expr->isa('Zuzu::AST::Expr::Var')) {
-		my $ref = $self->_env->find_ref($expr->name);
+		my ( $ref, $env ) = $self->_var_ref_for_node($expr);
 		die Zuzu::Error->new_runtime(message => "Undeclared variable '".$expr->name."'", file => $expr->file, line => $expr->line) if !$ref;
 
 		return {
 			kind => 'scalar_ref',
 			ref => $ref,
+			env => $env,
 			name => $expr->name,
-			weak_storage => $self->_env->is_weak_slot($expr->name),
+			weak_storage => defined $env
+				? ( $env->{weak}{ $expr->name } ? 1 : 0 )
+				: $self->_env->is_weak_slot($expr->name),
 			file => $expr->file,
 			line => $expr->line,
 		};
@@ -1442,6 +1482,7 @@ sub _resolve_lvalue_target {
 				kind => 'string_slice',
 				string_ref => $target->{ref},
 				name => $target->{name},
+				env => $target->{env},
 				target_expr => $expr,
 				file => $expr->file,
 				line => $expr->line,
@@ -1516,10 +1557,11 @@ sub eval_assign {
 	}
 
 	my $target = $self->_resolve_lvalue_target($node->target);
-	my ( $ref, $name, $file, $line, $slice_col, $string_ref, $pairlist, $pairlist_key )
+	my ( $ref, $name, $target_env, $file, $line, $slice_col, $string_ref, $pairlist, $pairlist_key )
 		= (
 			$target->{ref},
 			$target->{name},
+			$target->{env},
 			$target->{file},
 			$target->{line},
 			$target->{slice_col},
@@ -1534,8 +1576,10 @@ sub eval_assign {
 	) if $target->{const};
 
 	if ( defined $name ) {
-		my $const_here = $self->_env->is_const_here($name);
-		if (!defined $const_here) {
+		my $const_here = defined $target_env
+			? $target_env->{const}{$name}
+			: $self->_env->is_const_here($name);
+		if (!defined $const_here and !defined $target_env) {
 			# const could be in parent; find by walking
 			my $env = $self->_env;
 			while ($env) {
@@ -1580,6 +1624,7 @@ sub eval_assign {
 			$node->target,
 			$rhs,
 			$name,
+			$target_env,
 			$file,
 			$line,
 		);
@@ -1659,7 +1704,7 @@ sub eval_assign {
 }
 
 sub _assign_string_slice {
-	my ( $self, $string_ref, $target, $value, $name, $file, $line ) = @_;
+	my ( $self, $string_ref, $target, $value, $name, $target_env, $file, $line ) = @_;
 
 	my $start = defined $target->start
 		? 0 + ( $target->start->evaluate($self) // 0 )
@@ -1675,7 +1720,11 @@ sub _assign_string_slice {
 	my $replacement = $self->_to_String($value);
 	substr( $current, $start, $len ) = $replacement;
 	my $declared_type = defined $name
-		? $self->_env->declared_type_for($name)
+		? (
+			defined $target_env
+			? ( $target_env->{types}{$name} // 'Any' )
+			: $self->_env->declared_type_for($name)
+		)
 		: 'Any';
 	$self->_assert_declared_type(
 		$declared_type,
@@ -2549,8 +2598,23 @@ sub eval_literal { $_[1]->value }
 sub eval_var {
 	my ($self, $node) = @_;
 
+	my $env;
 	my $name = $node->{name};
-	my $env = $self->{_stack}[-1];
+	if (
+		defined $node->{_env_depth}
+		and defined $node->{_binding_name}
+		and $node->{_binding_name} eq $name
+	) {
+		$env = $self->{_stack}[-1];
+		for ( 1 .. $node->{_env_depth} ) {
+			last if !defined $env;
+			$env = $env->{parent};
+		}
+		return ${ $env->{slots}{$name} }
+			if defined $env and exists $env->{slots}{$name};
+	}
+
+	$env = $self->{_stack}[-1];
 	while ($env) {
 		return ${ $env->{slots}{$name} }
 			if exists $env->{slots}{$name};
@@ -3016,10 +3080,11 @@ sub _make_lvalue_ref_closure {
 			}
 			else {
 				my $target_info = $self->_resolve_lvalue_target( $target );
-				my ( $ref, $name, $file, $line, $slice_col, $string_ref, $pairlist, $pairlist_key )
+				my ( $ref, $name, $target_env, $file, $line, $slice_col, $string_ref, $pairlist, $pairlist_key )
 					= (
 						$target_info->{ref},
 						$target_info->{name},
+						$target_info->{env},
 						$target_info->{file},
 						$target_info->{line},
 						$target_info->{slice_col},
@@ -3034,8 +3099,10 @@ sub _make_lvalue_ref_closure {
 				) if $target_info->{const};
 
 				if ( defined $name ) {
-					my $const_here = $self->_env->is_const_here($name);
-					if ( ! defined $const_here ) {
+					my $const_here = defined $target_env
+						? $target_env->{const}{$name}
+						: $self->_env->is_const_here($name);
+					if ( ! defined $const_here and ! defined $target_env ) {
 						my $env = $self->_env;
 						while ( $env ) {
 							if ( exists $env->{slots}{$name} ) {
@@ -3100,6 +3167,7 @@ sub _make_lvalue_ref_closure {
 						$target,
 						$newval,
 						$name,
+						$target_env,
 						$file,
 						$line,
 					);
@@ -3228,10 +3296,12 @@ sub eval_incdec {
 	my ($self, $node) = @_;
 
 	my $target = $self->_resolve_lvalue_target($node->target);
-	my ($ref, $name, $file, $line)
-		= @{$target}{qw(ref name file line)};
-	my $const_here = $self->_env->is_const_here($name);
-	if (!defined $const_here) {
+	my ($ref, $name, $target_env, $file, $line)
+		= @{$target}{qw(ref name env file line)};
+	my $const_here = defined $target_env
+		? $target_env->{const}{$name}
+		: $self->_env->is_const_here($name);
+	if (!defined $const_here and !defined $target_env) {
 		my $env = $self->_env;
 		while ($env) {
 			no warnings 'uninitialized';
@@ -3279,7 +3349,13 @@ sub eval_incdec {
 
 	my $old = $self->_to_Number($$ref);
 	my $new = ($node->op eq '++') ? ($old + 1) : ($old - 1);
-	my $declared_type = defined $name ? $self->_env->declared_type_for($name) : 'Any';
+	my $declared_type = defined $name
+		? (
+			defined $target_env
+			? ( $target_env->{types}{$name} // 'Any' )
+			: $self->_env->declared_type_for($name)
+		)
+		: 'Any';
 	$self->_assert_declared_type( $declared_type, $new, $file, $line, $name );
 	$$ref = $new;
 
@@ -6138,6 +6214,7 @@ sub _persistent_ast_cache_path {
 		$module,
 		$path,
 		$source_md5,
+		$self->{_parser}->visitor_cache_key,
 	);
 
 	return File::Spec->catfile( $root, "$id.stor" );
@@ -6165,6 +6242,7 @@ sub _persistent_ast_cache_load {
 	return if ( $entry->{module} // '' ) ne $module;
 	return if ( $entry->{path} // '' ) ne $path;
 	return if ( $entry->{source_md5} // '' ) ne $source_md5;
+	return if ( $entry->{visitor_key} // '' ) ne $self->{_parser}->visitor_cache_key;
 	return if ( $entry->{source_size} // -1 ) != ( $st->[7] // -1 );
 	return if ( $entry->{source_mtime} // -1 ) != ( $st->[9] // -1 );
 
@@ -6204,6 +6282,7 @@ sub _persistent_ast_cache_store {
 			module => $module,
 			path => $path,
 			source_md5 => $source_md5,
+			visitor_key => $self->{_parser}->visitor_cache_key,
 			source_size => $st->[7] // -1,
 			source_mtime => $st->[9] // -1,
 			ast => $ast,
@@ -6324,7 +6403,8 @@ sub _load_module {
 	my $ast_cache_key = join "\x1f",
 		$found,
 		( defined $st[9] ? $st[9] : -1 ),
-		( defined $st[7] ? $st[7] : -1 );
+		( defined $st[7] ? $st[7] : -1 ),
+		$self->{_parser}->visitor_cache_key;
 	my $ast = $MODULE_AST_CACHE{$ast_cache_key};
 	if ( !defined $ast ) {
 		my $source_bytes = $self->_read_module_source_bytes( $found, $file, $line );

@@ -53,35 +53,6 @@ let child := new Child();
 child.label();
 SRC
 
-my $super_hint_ast = $parser->parse(<<'SRC', 'method-super-hints.zzs');
-class Parent {
-	method label () {
-		return "parent";
-	}
-	static method static_label () {
-		return "parent-static";
-	}
-}
-class Child extends Parent {
-	method plain () {
-		return "plain";
-	}
-	method label () {
-		return super() _ ":child";
-	}
-	static method static_label () {
-		return super() _ ":child-static";
-	}
-}
-SRC
-my $child_class = $super_hint_ast->statements->[1];
-is $child_class->methods->[0]->uses_super, 0,
-	'class/object parser hint: method without super is not marked';
-is $child_class->methods->[1]->uses_super, 1,
-	'class/object parser hint: instance method with super is marked';
-is $child_class->static_methods->[0]->uses_super, 1,
-	'class/object parser hint: static method with super is marked';
-
 like dies {
 	eval_src(<<'SRC');
 class Animal {

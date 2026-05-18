@@ -19,8 +19,10 @@ sub zuzu_eval {
 	my ( $script, $runtime_options ) = @_;
 	$runtime_options ||= {};
 
-	my $parser = Zuzu::Parser->new;
 	my $runtime = Zuzu::Runtime->new( %{ $runtime_options } );
+	my $parser = Zuzu::Parser->new(
+		disabled_visitors => $runtime->disabled_visitors,
+	);
 	my $ast = $parser->parse( $script, '<eval>' );
 	my $result = $runtime->evaluate($ast);
 
@@ -37,8 +39,10 @@ sub zuzu_evalfile {
 	my $source = <$fh>;
 	close $fh;
 
-	my $parser = Zuzu::Parser->new;
 	my $runtime = Zuzu::Runtime->new( %{ $runtime_options } );
+	my $parser = Zuzu::Parser->new(
+		disabled_visitors => $runtime->disabled_visitors,
+	);
 	my $ast = $parser->parse( $source, $filename );
 	my $result = $runtime->evaluate($ast);
 
