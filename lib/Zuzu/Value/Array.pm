@@ -111,6 +111,21 @@ sub clear {
 	return $self;
 }
 
+sub copy {
+	my ( $self ) = @_;
+	my $copy = Zuzu::Value::Array->new( items => [] );
+
+	for ( my $i = 0; $i < @{ $self->items }; $i++ ) {
+		$copy->_store_at(
+			$i,
+			$self->_value_at($i),
+			$self->weak->[$i] ? 1 : 0,
+		);
+	}
+
+	return $copy;
+}
+
 sub get {
 	my ( $self, $index, $default ) = @_;
 	$index = 0 + ( $index // 0 );

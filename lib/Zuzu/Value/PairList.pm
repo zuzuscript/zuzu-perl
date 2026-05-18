@@ -44,6 +44,21 @@ sub _value_at {
 	return slot_value( \$self->list->[$index][1] );
 }
 
+sub copy {
+	my ( $self ) = @_;
+	my $copy = Zuzu::Value::PairList->new( list => [] );
+
+	for ( my $i = 0; $i < @{ $self->list }; $i++ ) {
+		$copy->_append(
+			$self->list->[$i][0],
+			$self->_value_at($i),
+			$self->weak->[$i] ? 1 : 0,
+		);
+	}
+
+	return $copy;
+}
+
 sub keys {
 	my ( $self ) = @_;
 	my @keys = map { $_->[0] } @{ $self->list };

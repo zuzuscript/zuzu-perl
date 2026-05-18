@@ -39,6 +39,21 @@ sub _value_for_key {
 	return slot_value( \$self->map->{$key} );
 }
 
+sub copy {
+	my ( $self ) = @_;
+	my $copy = Zuzu::Value::Dict->new( map => {} );
+
+	for my $key ( CORE::keys %{ $self->map } ) {
+		$copy->_store_key(
+			$key,
+			$self->_value_for_key($key),
+			$self->weak->{$key} ? 1 : 0,
+		);
+	}
+
+	return $copy;
+}
+
 sub keys {
 	my ( $self ) = @_;
 

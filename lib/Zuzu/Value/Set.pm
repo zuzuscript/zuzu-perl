@@ -70,6 +70,21 @@ sub _uniq {
 	return $self;
 }
 
+sub copy {
+	my ( $self ) = @_;
+	my $copy = Zuzu::Value::Set->new( items => [] );
+
+	for ( my $i = 0; $i < @{ $self->items }; $i++ ) {
+		$copy->_store_at(
+			$i,
+			$self->_value_at($i),
+			$self->weak->[$i] ? 1 : 0,
+		);
+	}
+
+	return $copy;
+}
+
 sub add {
 	my ( $self, @vals ) = @_;
 

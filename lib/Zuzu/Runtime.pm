@@ -4421,6 +4421,7 @@ sub _array_method {
 	if ($m eq 'count') { return $arr->count; }
 	if ($m eq 'empty') { return $arr->empty; }
 	if ($m eq 'is_empty') { return $arr->is_empty; }
+	if ($m eq 'copy') { return $arr->copy; }
 	if ($m eq 'get') { return $arr->get( @$args ); }
 	if ($m eq 'set') { return $arr->set( @$args ); }
 	if ($m eq 'set_weak') { return $arr->set_weak( @$args ); }
@@ -4477,6 +4478,7 @@ sub _dict_method {
 	if ($m eq 'has') { return $d->contains_key( $args->[0] ); }
 	if ($m eq 'exists') { return $d->exists( $args->[0] ); }
 	if ($m eq 'defined') { return $d->defined( $args->[0] ); }
+	if ($m eq 'copy') { return $d->copy; }
 	if ($m eq 'get') { return $d->get( @$args ); }
 	if ($m eq 'add') { return $d->add( @$args ); }
 	if ($m eq 'add_weak') { return $d->add_weak( @$args ); }
@@ -4529,6 +4531,7 @@ sub _pairlist_method {
 	if ( $m eq 'has' ) { return $pairlist->contains_key( $args->[0] ); }
 	if ( $m eq 'exists' ) { return $pairlist->exists( $args->[0] ); }
 	if ( $m eq 'defined' ) { return $pairlist->defined( $args->[0] ); }
+	if ( $m eq 'copy' ) { return $pairlist->copy; }
 	if ( $m eq 'get' ) { return $pairlist->get( @{ $args } ); }
 	if ( $m eq 'get_all' or $m eq 'all' ) { return $pairlist->get_all( $args->[0] ); }
 	if ( $m eq 'add' ) { return $pairlist->add( @{ $args } ); }
@@ -4651,6 +4654,7 @@ sub _set_method {
 	if ($m eq 'count') { return $set->count; }
 	if ($m eq 'empty') { return $set->empty; }
 	if ($m eq 'is_empty') { return $set->is_empty; }
+	if ($m eq 'copy') { return $set->copy; }
 	if ($m eq 'clear') { return $set->clear; }
 	if ($m eq 'contains') { return $set->contains( $args->[0] ); }
 	if ($m eq 'to_Array') { return $set->to_Array; }
@@ -4703,6 +4707,7 @@ sub _bag_method {
 	if ($m eq 'length') { return $bag->length; }
 	if ($m eq 'count') { return $bag->count( @$args ); }
 	if ($m eq 'empty') { return $bag->empty; }
+	if ($m eq 'copy') { return $bag->copy; }
 	if ($m eq 'clear') { return $bag->clear; }
 	if ($m eq 'contains') { return $bag->contains( $args->[0] ); }
 	if ($m eq 'to_Array') { return $bag->to_Array; }
