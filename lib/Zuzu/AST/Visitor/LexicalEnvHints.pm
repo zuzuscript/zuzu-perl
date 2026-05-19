@@ -172,7 +172,8 @@ sub _visit_function_like {
 	my %initial;
 	if ( $node->isa('Zuzu::AST::Stmt::Method') ) {
 		$initial{self} = 1;
-		$initial{super} = 1 if $node->uses_super;
+		$initial{super} = 1
+			if !defined $node->uses_super or $node->uses_super;
 	}
 
 	$self->_push_scope( \%initial );
@@ -246,7 +247,7 @@ sub _visit_node {
 	if ( $node->isa('Zuzu::AST::Stmt::If') ) {
 		$self->_visit_node( $node->cond );
 		$self->_visit_block( $node->then_block );
-		$self->_visit_block( $node->else_branch ) if defined $node->else_branch;
+		$self->_visit_node( $node->else_branch ) if defined $node->else_branch;
 		return;
 	}
 

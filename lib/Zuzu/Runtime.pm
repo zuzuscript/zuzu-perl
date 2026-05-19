@@ -62,6 +62,20 @@ my $TRUE  = Zuzu::Value::Boolean->new( value => 1 );
 my $FALSE = Zuzu::Value::Boolean->new( value => 0 );
 sub _boolify { $_[0] ? $TRUE : $FALSE }
 my @BUILTIN_COLLECTION_KINDS = qw( Array Dict PairList Set Bag );
+my %ARRAY_MUTATING_METHOD = map { $_ => 1 } qw(
+	append push add push_weak pop
+	prepend unshift unshift_weak shift
+	set set_weak clear remove
+);
+my %DICT_MUTATING_METHOD = map { $_ => 1 } qw(
+	add add_weak set set_weak remove clear
+);
+my %SET_MUTATING_METHOD = map { $_ => 1 } qw(
+	add add_weak push remove clear remove_if
+);
+my %BAG_MUTATING_METHOD = map { $_ => 1 } qw(
+	add add_weak push remove remove_first clear remove_if
+);
 
 has 'lib' => ( is => 'rw', default => sub { [ @Zuzu::Runtime::DEFAULT_LIB ] } );
 has 'deny_modules' => ( is => 'rw', default => sub { [] } );
@@ -1023,17 +1037,17 @@ sub eval_block {
 		return $v;
 	}
 
-	my $env = Zuzu::Env->_new_fast( $self->_env );
-	$self->_push_env($env);
+	my $env = Zuzu::Env->_new_fast( $self->{_stack}[-1] ); # inlined $self->_env
+	push @{$self->{_stack}}, $env; # inlined $self->_push_env
 	eval {
 		for ( @{ $node->{statements} } ) { $v = $_->evaluate($self); }
 		1;
 	} or do {
 		my $e = $@;
-		$self->_pop_env;
+		pop @{$self->{_stack}}; # inlined $self->_pop_env
 		die $e;
 	};
-	$self->_pop_env;
+	pop @{$self->{_stack}}; # inlined $self->_pop_env
 
 	return $v;
 }
@@ -1191,7 +1205,7 @@ sub eval_let {
 		$self->_assert_declared_type( $declared_type, $val, $node->file, $node->line, $node->name )
 			if !$node->{_skip_type_check};
 	}
-	my $ref = $self->_env->declare(
+	my $ref = $self->{_stack}[-1]->declare( # inlined $self->_env
 		$node->name,
 		undef,
 		$node->is_const ? 1 : 0,
@@ -1877,8 +1891,8 @@ sub eval_for {
 
 		my $using_inner_loop_scope = $node->declare_loop_var ? 1 : 0;
 		if ($using_inner_loop_scope) {
-			my $env = Zuzu::Env->_new_fast( $self->_env );
-			$self->_push_env($env);
+			my $env = Zuzu::Env->_new_fast( $self->{_stack}[-1] ); # inlined $self->_env
+			push @{$self->{_stack}}, $env; # inlined $self->_push_env
 			my $const_flag = ( defined $node->loop_var_kind and $node->loop_var_kind eq 'const' ) ? 1 : 0;
 			$env->declare($node->var, $it, $const_flag);
 		}
@@ -1911,13 +1925,13 @@ sub eval_for {
 
 		eval { $v = $node->body->evaluate($self); 1 } or do {
 			my $e = $@;
-			$self->_pop_env if $using_inner_loop_scope;
+			pop @{$self->{_stack}} if $using_inner_loop_scope; # inlined $self->_pop_env
 			return 'next' if ref($e) and $e->{_control} and $e->{_control} eq 'next';
 			return 'last' if ref($e) and $e->{_control} and $e->{_control} eq 'last';
 			die $e;
 		};
 
-		$self->_pop_env if $using_inner_loop_scope;
+		pop @{$self->{_stack}} if $using_inner_loop_scope; # inlined $self->_pop_env
 		return 'ok';
 	};
 
@@ -2168,7 +2182,7 @@ sub eval_function_expr {
 		param_defaults => { %{ $node->param_defaults // {} } },
 		return_type => $node->return_type // 'Any',
 		body => $node->body,
-		closure_env => $self->_capture_env( $self->_env ),
+		closure_env => $self->_capture_env( $self->{_stack}[-1] ), # inlined $self->_env
 		is_async => $node->is_async ? 1 : 0,
 		source_node => $node,
 	);
@@ -2216,7 +2230,7 @@ sub eval_class_def {
 		$method_fn->{_method_name} = $m->name;
 		$method_fn->{_method_kind} = 'instance';
 		$method_fn->{_method_source} = 'class';
-		$method_fn->{_uses_super} = $m->uses_super ? 1 : 0;
+		$method_fn->{_uses_super} = $m->uses_super;
 		$self->_install_method_function( $klass->methods, $m, $method_fn );
 	}
 	for my $trait ( @traits ) {
@@ -2242,7 +2256,7 @@ sub eval_class_def {
 			$trait_method->{_method_name} = $mname;
 			$trait_method->{_method_kind} = 'instance';
 			$trait_method->{_method_source} = 'trait';
-			$trait_method->{_uses_super} = $source_method->{_uses_super} ? 1 : 0;
+			$trait_method->{_uses_super} = $source_method->{_uses_super};
 			push @{ $klass->trait_methods->{ $mname } }, $trait_method;
 		}
 	}
@@ -2252,7 +2266,7 @@ sub eval_class_def {
 		$static_fn->{_method_name} = $m->name;
 		$static_fn->{_method_kind} = 'static';
 		$static_fn->{_method_source} = 'class';
-		$static_fn->{_uses_super} = $m->uses_super ? 1 : 0;
+		$static_fn->{_uses_super} = $m->uses_super;
 		$self->_install_method_function( $klass->static_methods, $m, $static_fn );
 	}
 
@@ -2295,7 +2309,7 @@ sub eval_trait_def {
 
 	for my $m ( @{ $node->methods // [] } ) {
 		my $method = $self->_function_from_method_decl( $m, $self->_env );
-		$method->{_uses_super} = $m->uses_super ? 1 : 0;
+		$method->{_uses_super} = $m->uses_super;
 		$self->_install_method_function( $trait->methods, $m, $method );
 	}
 
@@ -4440,6 +4454,41 @@ sub _evaluate_invocation_args {
 	return ( $EMPTY_ARRAY, $EMPTY_HASH, $EMPTY_ARRAY )
 		if scalar @{ $list } == 0;
 
+	my $simple_exprs;
+	my $simple_addr = refaddr($list) // 0;
+	my $simple_cache = $self->{_simple_invocation_arg_cache} //= {};
+	my $simple_cached = $simple_cache->{$simple_addr};
+	if (
+		defined $simple_cached
+		and defined $simple_cached->[0]
+		and refaddr( $simple_cached->[0] ) == $simple_addr
+	) {
+		$simple_exprs = $simple_cached->[1];
+	}
+	else {
+		my @exprs;
+		$simple_exprs = \@exprs;
+		for my $entry ( @{ $list } ) {
+			if ( ref($entry) ne 'ARRAY' or defined $entry->[0] or $entry->[2] ) {
+				$simple_exprs = 0;
+				last;
+			}
+			my $expr = $entry->[1];
+			if ( blessed($expr) and $expr->isa('Zuzu::AST::Expr::Spread') ) {
+				$simple_exprs = 0;
+				last;
+			}
+			push @exprs, $expr;
+		}
+		$simple_cache->{$simple_addr} = [ $list, $simple_exprs ];
+		weaken( $simple_cache->{$simple_addr}[0] );
+	}
+	if ($simple_exprs) {
+		my @positional;
+		push @positional, $_->evaluate($self) for @{ $simple_exprs };
+		return ( \@positional, $EMPTY_HASH, $EMPTY_ARRAY );
+	}
+
 	my @positional;
 	my $named;
 	my $named_pairs;
@@ -4582,23 +4631,24 @@ sub _collection_builtin_kind {
 sub _builtin_collection_views {
 	my ( $self, $value ) = @_;
 
-	if ( blessed($value) ) {
+	my $class = ref($value);
+	if ($class) {
 		return ( $value, undef, undef, undef, undef )
-			if $value->isa('Zuzu::Value::Array');
+			if $class eq 'Zuzu::Value::Array';
 		return ( undef, $value, undef, undef, undef )
-			if $value->isa('Zuzu::Value::Dict');
+			if $class eq 'Zuzu::Value::Dict';
 		return ( undef, undef, $value, undef, undef )
-			if $value->isa('Zuzu::Value::PairList');
+			if $class eq 'Zuzu::Value::PairList';
 		return ( undef, undef, undef, $value, undef )
-			if $value->isa('Zuzu::Value::Set');
+			if $class eq 'Zuzu::Value::Set';
 		return ( undef, undef, undef, undef, $value )
-			if $value->isa('Zuzu::Value::Bag');
+			if $class eq 'Zuzu::Value::Bag';
 
-		if ( $value->isa('Zuzu::Value::Object') ) {
+		if ( $class eq 'Zuzu::Value::Object' ) {
 			my $kind = $self->_collection_builtin_kind( $value->{class} );
 			if ( defined $kind ) {
 				my $wrapped = $value->{slots}{__value};
-				if ( blessed($wrapped) and $wrapped->isa("Zuzu::Value::$kind") ) {
+				if ( ref($wrapped) eq "Zuzu::Value::$kind" ) {
 					return ( $wrapped, undef, undef, undef, undef ) if $kind eq 'Array';
 					return ( undef, $wrapped, undef, undef, undef ) if $kind eq 'Dict';
 					return ( undef, undef, $wrapped, undef, undef ) if $kind eq 'PairList';
@@ -4659,12 +4709,8 @@ sub _normalize_pair_argument {
 
 sub _array_method {
 	my ($self, $arr, $m, $args, $file, $line) = @_;
-	my %mutating = map { $_ => 1 } qw(
-		append push add push_weak pop
-		prepend unshift unshift_weak shift
-		set set_weak clear remove
-	);
-	$self->_assert_mutable_collection( $arr, $file, $line ) if $mutating{$m};
+	$self->_assert_mutable_collection( $arr, $file, $line )
+		if $ARRAY_MUTATING_METHOD{$m};
 
 	if ($m eq 'append' || $m eq 'push' || $m eq 'add') { return $arr->push( @$args ); }
 	if ($m eq 'push_weak') { return $arr->push_weak( @$args ); }
@@ -4722,8 +4768,8 @@ sub _array_method {
 
 sub _dict_method {
 	my ($self, $d, $m, $args, $file, $line) = @_;
-	my %mutating = map { $_ => 1 } qw( add add_weak set set_weak remove clear );
-	$self->_assert_mutable_collection( $d, $file, $line ) if $mutating{$m};
+	$self->_assert_mutable_collection( $d, $file, $line )
+		if $DICT_MUTATING_METHOD{$m};
 
 	if ($m eq 'keys') {
 		return $d->keys;
@@ -4777,8 +4823,8 @@ sub _dict_method {
 
 sub _pairlist_method {
 	my ( $self, $pairlist, $m, $args, $file, $line ) = @_;
-	my %mutating = map { $_ => 1 } qw( add add_weak set set_weak remove clear );
-	$self->_assert_mutable_collection( $pairlist, $file, $line ) if $mutating{$m};
+	$self->_assert_mutable_collection( $pairlist, $file, $line )
+		if $DICT_MUTATING_METHOD{$m};
 
 	if ( $m eq 'keys' ) { return $pairlist->keys; }
 	if ( $m eq 'values' ) { return $pairlist->values; }
@@ -4899,8 +4945,8 @@ sub _pairlist_to_array {
 
 sub _set_method {
 	my ($self, $set, $m, $args, $file, $line) = @_;
-	my %mutating = map { $_ => 1 } qw( add add_weak push remove clear remove_if );
-	$self->_assert_mutable_collection( $set, $file, $line ) if $mutating{$m};
+	$self->_assert_mutable_collection( $set, $file, $line )
+		if $SET_MUTATING_METHOD{$m};
 
 	if ($m eq 'add' || $m eq 'push') { return $set->add( @$args ); }
 	if ($m eq 'add_weak') { return $set->add_weak( @$args ); }
@@ -4950,10 +4996,8 @@ sub _set_method {
 
 sub _bag_method {
 	my ($self, $bag, $m, $args, $file, $line) = @_;
-	my %mutating = map { $_ => 1 } qw(
-		add add_weak push remove remove_first clear remove_if
-	);
-	$self->_assert_mutable_collection( $bag, $file, $line ) if $mutating{$m};
+	$self->_assert_mutable_collection( $bag, $file, $line )
+		if $BAG_MUTATING_METHOD{$m};
 
 	if ($m eq 'add' || $m eq 'push') { return $bag->add( @$args ); }
 	if ($m eq 'add_weak') { return $bag->add_weak( @$args ); }
@@ -5584,7 +5628,7 @@ sub _bind_method {
 	$bound->{_owner_class} = $method->{_owner_class};
 	$bound->{_method_name} = $method->{_method_name} // $method_name;
 	$bound->{_method_kind} = $method->{_method_kind} // 'instance';
-	$bound->{_uses_super} = $method->{_uses_super} ? 1 : 0;
+	$bound->{_uses_super} = $method->{_uses_super};
 	$self->{_bound_method_cache}{$method_key} = {
 		method_ref => $method,
 		bound => $bound,
@@ -5662,9 +5706,9 @@ sub _call_method {
 	}
 
 	my $call_env = Zuzu::Env->_new_fast( $fn->{closure_env} );
-	$self->_push_env($call_env);
+	push @{$self->{_stack}}, $call_env; # inlined $self->_push_env
 	$call_env->declare('self', $self_value, 1);
-	if ( $fn->{_uses_super} ) {
+	if ( !defined $fn->{_uses_super} or $fn->{_uses_super} ) {
 		# This path runs for methods that reference super; construct the small
 		# native wrapper directly instead of paying Moo constructor/default costs.
 		my $super_fn = bless {
@@ -5708,13 +5752,19 @@ sub _call_method {
 
 	if (blessed($self_value) and $self_value->isa('Zuzu::Value::Object')) {
 		my $slots = $self_value->{slots};
-		$call_env->alias_to_ref(
-			$_,
-			\$slots->{$_},
-			$self_value->{const}{$_} ? 1 : 0,
-			$self_value->{types}{$_} // 'Any',
-			$self_value->{weak}{$_} ? 1 : 0,
-		) for CORE::keys %{ $slots };
+		my $call_slots = $call_env->{slots};
+		my $call_const = $call_env->{const};
+		my $call_types = $call_env->{types};
+		my $call_weak = $call_env->{weak};
+		my $self_const = $self_value->{const};
+		my $self_types = $self_value->{types};
+		my $self_weak = $self_value->{weak};
+		for my $name ( CORE::keys %{ $slots } ) {
+			$call_slots->{$name} = \$slots->{$name};
+			$call_const->{$name} = $self_const->{$name} ? 1 : 0;
+			$call_types->{$name} = $self_types->{$name} // 'Any';
+			$call_weak->{$name} = $self_weak->{$name} ? 1 : 0;
+		}
 	}
 
 	my $ret;
@@ -5733,7 +5783,7 @@ sub _call_method {
 		1;
 	} or do {
 		my $e = $@;
-		$self->_pop_env;
+		pop @{$self->{_stack}}; # inlined $self->_pop_env
 		if (ref($e) && ref($e) eq 'Zuzu::Control' && $e->{_control} eq 'return') {
 			my $value = $e->{value};
 			$self->_assert_return_type( $fn, $value, $file, $line )
@@ -5743,7 +5793,7 @@ sub _call_method {
 		die $e;
 	};
 
-	$self->_pop_env;
+	pop @{$self->{_stack}}; # inlined $self->_pop_env
 	$self->_assert_return_type( $fn, $ret, $file, $line );
 
 	return $ret;
@@ -5810,7 +5860,7 @@ sub _call_function {
 	}
 
 	my $call_env = Zuzu::Env->_new_fast( $fn->{closure_env} );
-	$self->_push_env($call_env);
+	push @{$self->{_stack}}, $call_env; # inlined $self->_push_env
 
 	my $ret;
 	eval {
@@ -5828,7 +5878,7 @@ sub _call_function {
 		1;
 	} or do {
 		my $e = $@;
-		$self->_pop_env;
+		pop @{$self->{_stack}}; # inlined $self->_pop_env
 		if (ref($e) && ref($e) eq 'Zuzu::Control' && $e->{_control} eq 'return') {
 			my $value = $e->{value};
 			$self->_assert_return_type( $fn, $value, $file, $line )
@@ -5838,7 +5888,7 @@ sub _call_function {
 		die $e;
 	};
 
-	$self->_pop_env;
+	pop @{$self->{_stack}}; # inlined $self->_pop_env
 	$self->_assert_return_type( $fn, $ret, $file, $line );
 
 	return $ret;
@@ -5901,6 +5951,33 @@ sub _bind_function_params {
 	my $binding_plan = $self->_function_binding_plan( $fn );
 	my $params = $binding_plan->{params};
 	my $arg_count = scalar @{ $args // [] };
+	if ( $binding_plan->{simple_bind} ) {
+		if ( $arg_count != $binding_plan->{total} or scalar @{ $named_pairs // [] } ) {
+			$self->_validate_arity( $fn, $args, $named_pairs, $file, $line, $binding_plan );
+		}
+		my $slots = $call_env->{slots};
+		my $const = $call_env->{const};
+		my $types = $call_env->{types};
+		my $weak = $call_env->{weak};
+		die "Internal redeclare __argc__" if exists $slots->{__argc__};
+
+		my @values = ( 0 + $arg_count, @{ $args } );
+		$slots->{__argc__} = \$values[0];
+		$const->{__argc__} = 1;
+		$types->{__argc__} = 'Number';
+		$weak->{__argc__} = 0;
+
+		for my $i ( 0 .. $#{ $params } ) {
+			my $name = $params->[$i];
+			die "Internal redeclare $name" if exists $slots->{$name};
+			$slots->{$name} = \$values[ $i + 1 ];
+			$const->{$name} = 1;
+			$types->{$name} = 'Any';
+			$weak->{$name} = 0;
+		}
+
+		return;
+	}
 	$self->_validate_arity( $fn, $args, $named_pairs, $file, $line, $binding_plan );
 	$call_env->declare( '__argc__', 0 + $arg_count, 1, 'Number' );
 
@@ -5963,19 +6040,26 @@ sub _function_binding_plan {
 	my @default_exprs;
 	my @default_typecheck_safe;
 	my $required = 0;
+	my $all_types_any = 1;
+	my $has_any_default = 0;
 	my $param_types = $fn->{param_types} // {};
 	my $param_optional = $fn->{param_optional} // {};
 	my $param_defaults = $fn->{param_defaults} // {};
 	my $default_typecheck_safe = $fn->{_default_typecheck_safe} // {};
 	for my $name ( @params ) {
 		my $has_default = exists $param_defaults->{$name} ? 1 : 0;
+		$has_any_default ||= $has_default;
 		my $is_optional = $param_optional->{$name} || $has_default;
 		$required++ if !$is_optional;
-		push @declared_types, $param_types->{$name} // 'Any';
+		my $declared_type = $param_types->{$name} // 'Any';
+		$all_types_any = 0 if $declared_type ne 'Any';
+		push @declared_types, $declared_type;
 		push @has_defaults, $has_default;
 		push @default_exprs, $has_default ? $param_defaults->{$name} : undef;
 		push @default_typecheck_safe, $default_typecheck_safe->{$name} ? 1 : 0;
 	}
+	my $has_vararg = defined $fn->{vararg} ? 1 : 0;
+	my $has_named_vararg = defined $fn->{named_vararg} ? 1 : 0;
 
 	$plan = {
 		params => \@params,
@@ -5985,8 +6069,15 @@ sub _function_binding_plan {
 		default_typecheck_safe => \@default_typecheck_safe,
 		required => $required,
 		total => scalar @params,
-		has_vararg => defined $fn->{vararg} ? 1 : 0,
-		has_named_vararg => defined $fn->{named_vararg} ? 1 : 0,
+		has_vararg => $has_vararg,
+		has_named_vararg => $has_named_vararg,
+		simple_bind => (
+			$all_types_any
+			and !$has_any_default
+			and !$has_vararg
+			and !$has_named_vararg
+			and $required == @params
+		) ? 1 : 0,
 	};
 	$fn->{_binding_plan} = $plan;
 

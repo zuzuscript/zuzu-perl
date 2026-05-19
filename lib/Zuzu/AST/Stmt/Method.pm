@@ -19,7 +19,7 @@ has 'param_optional' => ( is => 'rw', default => sub { {} } );
 has 'param_defaults' => ( is => 'rw', default => sub { {} } );
 has 'return_type' => ( is => 'rw', default => sub { 'Any' } );
 has 'is_async' => ( is => 'rw', default => sub { 0 } );
-has 'uses_super' => ( is => 'rw', default => sub { 0 } );
+has 'uses_super' => ( is => 'rw', default => sub { undef } );
 has 'is_predeclared' => ( is => 'rw', default => sub { 0 } );
 
 with 'Zuzu::AST::Role::Node';
@@ -76,6 +76,13 @@ Function or loop block executed by the node/value.
 Type: B<Bool>.
 
 Whether this method is invoked on the class instead of instances.
+
+=head2 uses_super
+
+Type: B<Maybe[Bool]>.
+
+Whether this method uses C<super>. C<undef> means the method has not been
+analysed yet.
 
 =head1 METHODS
 

@@ -135,8 +135,8 @@ my $no_super_cmd = "$^X $zuzu_bin --no-visitor=SuperHints $super_script 2>&1";
 my $no_super_output = qx{$no_super_cmd};
 my $no_super_exit = $? >> 8;
 isnt $no_super_exit, 0, '--no-visitor disables the named visitor';
-like $no_super_output, qr/Undeclared variable 'super'/,
-	'disabling SuperHints prevents super dispatch setup';
+like $no_super_output, qr/parent:child/,
+	'disabled SuperHints conservatively keeps super dispatch setup';
 
 my $inc_dir = File::Spec->catdir( $tmpdir, 'modules', 'extras' );
 make_path( $inc_dir );
