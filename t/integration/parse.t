@@ -290,4 +290,11 @@ SRC
 }, qr/Spread argument '\.\.\.' is only valid in call argument lists/,
 	'dict value spread is rejected';
 
+like dies {
+	$p->parse(<<'SRC', 'explicit-here-param.zzs');
+let f := fn ^^ -> ^^;
+SRC
+}, qr/'\^\^' is reserved for the chain placeholder/,
+	'explicit ^^ lambda parameter is rejected';
+
 done_testing;

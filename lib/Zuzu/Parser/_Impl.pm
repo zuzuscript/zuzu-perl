@@ -152,6 +152,25 @@ sub _maybe {
 	return $t;
 }
 
+sub _peek_token {
+	my ($self) = @_;
+
+	my $lexer = $self->{lexer};
+	my ( $pos, $line, $col, $last ) = (
+		$lexer->pos,
+		$lexer->line,
+		$lexer->col,
+		$lexer->last_token,
+	);
+	my $tok = $lexer->next_token;
+	$lexer->pos($pos);
+	$lexer->line($line);
+	$lexer->col($col);
+	$lexer->last_token($last);
+
+	return $tok;
+}
+
 sub _eat_member_name {
 	my ( $self ) = @_;
 
@@ -465,6 +484,24 @@ sub _finish_with_postfix_condition {
 			statement => $stmt,
 			cond => $cond,
 			negate => $negate,
+		);
+	}
+	elsif ( $self->{tok}->is_KW('for') ) {
+		$self->_eat('KW', 'for');
+		my $collection = $self->parse_expression;
+		$stmt = Zuzu::AST::Stmt::For->new(
+			file => $stmt->file,
+			line => $stmt->line,
+			var => '^^',
+			declare_loop_var => 1,
+			loop_var_kind => 'const',
+			collection => $collection,
+			body => Zuzu::AST::Block->new(
+				file => $stmt->file,
+				line => $stmt->line,
+				statements => [ $stmt ],
+			),
+			else_block => undef,
 		);
 	}
 
@@ -1469,27 +1506,45 @@ sub parse_for {
 		$loop_var_kind = 'const';
 	}
 	my $declares_loop_var = defined $loop_var_kind ? 1 : 0;
-	my $id = $self->_eat('IDENT');
-	my $var = $id->value;
-	if ( !$declares_loop_var and !$self->_lookup($var) and !$self->_has_wildcard_import_in_scope ) {
-		$self->_err("Use of undeclared identifier '$var' (compile-time)", $id);
+	my ( $id, $var, $col );
+	if ($declares_loop_var) {
+		$id = $self->_eat('IDENT');
+		$var = $id->value;
+		$self->_eat('KW', 'in');
+		$col = $self->parse_expression;
 	}
-	$self->_eat('KW', 'in');
-	my $col = $self->parse_expression;
+	elsif ( $self->{tok}->is_IDENT and $self->_peek_token->is_KW('in') ) {
+		$id = $self->_eat('IDENT');
+		$var = $id->value;
+		if ( !$self->_lookup($var) and !$self->_has_wildcard_import_in_scope ) {
+			$self->_err("Use of undeclared identifier '$var' (compile-time)", $id);
+		}
+		$self->_eat('KW', 'in');
+		$col = $self->parse_expression;
+	}
+	else {
+		$id = $self->{tok};
+		$var = '^^';
+		$declares_loop_var = 1;
+		$loop_var_kind = 'const';
+		$col = $self->parse_expression;
+	}
 	$self->_eat('OP', ')');
 
 	my $body;
 	if ($declares_loop_var) {
 		# Loop variable is scoped to body only when declared in header.
 		$self->_push_scope;
-		$self->_declare(
-			$var,
-			{
-				kind => $loop_var_kind,
-				mutable => ( $loop_var_kind eq 'let' ? 1 : 0 ),
-			},
-			$id
-		);
+		if ( $var ne '^^' ) {
+			$self->_declare(
+				$var,
+				{
+					kind => $loop_var_kind,
+					mutable => ( $loop_var_kind eq 'let' ? 1 : 0 ),
+				},
+				$id
+			);
+		}
 		$body = $self->parse_block;
 		$self->_pop_scope;
 	}
@@ -2064,6 +2119,37 @@ sub parse_prefix {
 	my ($self) = @_;
 
 	my $t = $self->{tok};
+
+	if ( $t->is_OP and ( $t->value eq '->' or $t->value eq '→' ) ) {
+		my $arrow = $self->_eat('OP');
+		my $expr = $self->parse_expression;
+		my $ret = Zuzu::AST::Stmt::Return->new(
+			file => $arrow->file,
+			line => $arrow->line,
+			expr => $expr,
+		);
+		my $body = Zuzu::AST::Block->new(
+			file => $arrow->file,
+			line => $arrow->line,
+			statements => [ $ret ],
+		);
+
+		return Zuzu::AST::Expr::Function->new(
+			file => $arrow->file,
+			line => $arrow->line,
+			params => [ '^^' ],
+			vararg => undef,
+			body => $body,
+			param_types => { '^^' => 'Any' },
+			vararg_type => 'Any',
+			named_vararg => undef,
+			named_vararg_type => 'PairList',
+			param_optional => { '^^' => 1 },
+			param_defaults => {},
+			return_type => 'Any',
+			is_async => 0,
+		);
+	}
 
 	if (
 		$t->is_OP
