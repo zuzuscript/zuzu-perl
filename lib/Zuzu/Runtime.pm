@@ -3439,11 +3439,43 @@ sub eval_binary {
 
 		return $self->_to_Boolean($l) ? $TRUE : _boolify( $self->_to_Boolean( $node->right->evaluate($self) ) );
 	}
+	if ( $op eq '▷' or $op eq '|>' or $op eq '◁' or $op eq '<|' ) {
+		return $self->_eval_chain_operator($node);
+	}
 
 	my $l = $node->left->evaluate($self);
 	my $r = $node->right->evaluate($self);
 
 	return $self->_eval_binary_op_values( $op, $l, $r, $node->file, $node->line );
+}
+
+sub _eval_chain_operator {
+	my ( $self, $node ) = @_;
+
+	my $op = $node->op;
+	my ( $value, $expr );
+	if ( $op eq '▷' or $op eq '|>' ) {
+		$value = $node->left->evaluate($self);
+		$expr = $node->right;
+	}
+	else {
+		$value = $node->right->evaluate($self);
+		$expr = $node->left;
+	}
+
+	my $env = Zuzu::Env->_new_fast( $self->{_stack}[-1] );
+	$self->_push_env($env);
+	$env->declare( '^^', $value, 1, 'Any' );
+	my $result;
+	my $ok = eval {
+		$result = $expr->evaluate($self);
+		1;
+	};
+	my $err = $@;
+	$self->_pop_env;
+	die $err if !$ok;
+
+	return $result;
 }
 
 sub _switch_matches {

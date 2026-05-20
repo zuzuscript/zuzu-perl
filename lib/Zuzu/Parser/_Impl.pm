@@ -205,6 +205,7 @@ sub _declare {
 	$tok //= $self->{tok};
 	$opts //= {};
 	$self->_err("Keyword '$name' cannot be used as an identifier", $tok) if Zuzu::Util::is_keyword($name);
+	$self->_err("'^^' is reserved for the chain placeholder", $tok) if $name eq '^^';
 	my $scope = $self->{scopes}[-1];
 	if ( exists $scope->{$name} ) {
 		my $existing = $scope->{$name};
@@ -219,6 +220,7 @@ sub _declare_function_name {
 	my ( $self, $name, $tok, $is_predeclared ) = @_;
 
 	$self->_err("Keyword '$name' cannot be used as an identifier", $tok) if Zuzu::Util::is_keyword($name);
+	$self->_err("'^^' is reserved for the chain placeholder", $tok) if $name eq '^^';
 	my $scope = $self->{scopes}[-1];
 	if ( exists $scope->{$name} ) {
 		my $existing = $scope->{$name};
@@ -1799,33 +1801,7 @@ sub parse_import {
 sub parse_expression {
 	my ($self) = @_;
 
-	my $cond = $self->_parse_prec(0);
-
-	if ( $self->_maybe('OP', '?') ) {
-		my $if_true = $self->parse_expression;
-		$self->_eat('OP', ':');
-		my $if_false = $self->parse_expression;
-
-		return Zuzu::AST::Expr::Ternary->new(
-			file => $cond->file,
-			line => $cond->line,
-			cond => $cond,
-			if_true => $if_true,
-			if_false => $if_false,
-		);
-	}
-
-	if ( $self->_maybe('OP', '?:') ) {
-		my $if_false = $self->parse_expression;
-
-		return Zuzu::AST::Expr::Ternary->new(
-			file => $cond->file,
-			line => $cond->line,
-			cond => $cond,
-			if_true => undef,
-			if_false => $if_false,
-		);
-	}
+	my $cond = $self->parse_chain_expression;
 
 	my $assign_op = $self->_maybe('OP', ':=')
 		|| $self->_maybe('OP', '~=')
@@ -1884,6 +1860,121 @@ sub parse_expression {
 		}
 
 	return $cond;
+}
+
+sub parse_ternary_expression {
+	my ($self) = @_;
+
+	my $cond = $self->_parse_prec(0);
+
+	if ( $self->_maybe('OP', '?') ) {
+		my $if_true = $self->parse_expression;
+		$self->_eat('OP', ':');
+		my $if_false = $self->parse_expression;
+
+		return Zuzu::AST::Expr::Ternary->new(
+			file => $cond->file,
+			line => $cond->line,
+			cond => $cond,
+			if_true => $if_true,
+			if_false => $if_false,
+		);
+	}
+
+	if ( $self->_maybe('OP', '?:') ) {
+		my $if_false = $self->parse_expression;
+
+		return Zuzu::AST::Expr::Ternary->new(
+			file => $cond->file,
+			line => $cond->line,
+			cond => $cond,
+			if_true => undef,
+			if_false => $if_false,
+		);
+	}
+
+	return $cond;
+}
+
+sub _chain_direction {
+	my ( $self, $op ) = @_;
+
+	return 'right' if $op eq '▷' or $op eq '|>';
+	return 'left'  if $op eq '◁' or $op eq '<|';
+
+	return undef;
+}
+
+sub parse_chain_expression {
+	my ($self) = @_;
+
+	my $left = $self->parse_ternary_expression;
+	my $op_tok = $self->{tok};
+	return $left if !$op_tok->is_OP;
+
+	my $direction = $self->_chain_direction( $op_tok->value );
+	return $left if !$direction;
+
+	$self->{tok} = $self->{lexer}->next_token;
+	my $right = $direction eq 'left'
+		? $self->_parse_leftward_chain_rhs
+		: $self->parse_ternary_expression;
+	$left = Zuzu::AST::Expr::Binary->new(
+		file => $op_tok->file,
+		line => $op_tok->line,
+		op => $op_tok->value,
+		left => $left,
+		right => $right,
+	);
+
+	while ( $direction eq 'right' and $self->{tok}->is_OP ) {
+		my $next_dir = $self->_chain_direction( $self->{tok}->value );
+		last if !$next_dir;
+		$self->_err("Mixed chain directions require parentheses", $self->{tok})
+			if $next_dir ne $direction;
+		$op_tok = $self->{tok};
+		$self->{tok} = $self->{lexer}->next_token;
+		$right = $self->parse_ternary_expression;
+		$left = Zuzu::AST::Expr::Binary->new(
+			file => $op_tok->file,
+			line => $op_tok->line,
+			op => $op_tok->value,
+			left => $left,
+			right => $right,
+		);
+	}
+
+	if ( $direction eq 'left' and $self->{tok}->is_OP ) {
+		my $next_dir = $self->_chain_direction( $self->{tok}->value );
+		$self->_err("Mixed chain directions require parentheses", $self->{tok})
+			if defined $next_dir;
+	}
+
+	return $left;
+}
+
+sub _parse_leftward_chain_rhs {
+	my ($self) = @_;
+
+	my $left = $self->parse_ternary_expression;
+	my $op_tok = $self->{tok};
+	return $left if !$op_tok->is_OP;
+
+	my $direction = $self->_chain_direction( $op_tok->value );
+	return $left if !$direction;
+	$self->_err("Mixed chain directions require parentheses", $op_tok)
+		if $direction ne 'left';
+
+	$self->{tok} = $self->{lexer}->next_token;
+	my $right = $self->_parse_leftward_chain_rhs;
+
+	return Zuzu::AST::Expr::Binary->new(
+		file => $op_tok->file,
+		line => $op_tok->line,
+		op => $op_tok->value,
+		left => $left,
+		right => $right,
+	);
 }
 
 sub _prec {
@@ -2152,7 +2243,8 @@ sub parse_primary {
 		my $is_named_arg_label
 			= ( $self->{_invocation_arg_depth} // 0 )
 			and $self->{tok}->is_OP(':');
-		if ( !$info and !$self->_has_wildcard_import_in_scope and !$is_named_arg_label ) {
+		my $is_chain_placeholder = $name eq '^^';
+		if ( !$info and !$is_chain_placeholder and !$self->_has_wildcard_import_in_scope and !$is_named_arg_label ) {
 			$self->_err("Use of undeclared identifier '$name' (compile-time)", $id);
 		}
 

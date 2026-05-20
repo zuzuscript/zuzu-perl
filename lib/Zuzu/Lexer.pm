@@ -431,12 +431,19 @@ sub next_token {
 			return $self->_emit('EMPTY_SET', '∅', $line, $col);
 		}
 
+		if ( $self->_peek(2) eq '^^' ) {
+			$self->_adv(2);
+
+			return $self->_emit('IDENT', '^^', $line, $col);
+		}
+
 		# operators / punct (try longest first)
 		my @ops = (
 			'<<<', '>>>',
 			'{{', '}}',
 			'<=>', '**', '==', '!=', '<=', '>=', ':=', '~=', '+=', '-=', '*=', '/=',
 			'×=', '÷=', '**=', '_=', '?:=', '@@', '@?', '++', '--', '->', '→', '?:', '...',
+			'|>', '<|',
 			'⊂⊃',
 			'<<', '>>', '«', '»',
 			'{', '}', '(', ')', '[', ']', ',', ';', ':', '.', '?', '_', '@',
@@ -444,7 +451,7 @@ sub next_token {
 			'⌊', '⌋', '⌈', '⌉',
 		);
 		# plus unicode aliases you mentioned (not exhaustive)
-		push @ops, qw( × ÷ ≠ ≤ ≥ ≡ ≢ ≶ ≷ ⋀ ⋁ ⊻ ⊼ ¬ ∈ ∉ ⋃ ⋂ ⊂ ⊃ ∖ \ );
+		push @ops, qw( × ÷ ≠ ≤ ≥ ≡ ≢ ≶ ≷ ⋀ ⋁ ⊻ ⊼ ¬ ∈ ∉ ⋃ ⋂ ⊂ ⊃ ∖ \ ▷ ◁ );
 		# sort by length desc for greedy match
 		@ops = sort { length($b) <=> length($a) } @ops;
 

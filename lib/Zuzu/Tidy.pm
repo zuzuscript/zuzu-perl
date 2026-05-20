@@ -21,6 +21,7 @@ my %BINARY_OP = map { $_ => 1 } qw(
 	default
 	& | ^
 	@ @? @@
+	▷ ◁ |> <|
 	:= ~= += -= *= /= ×= ÷= **= _= ?:=
 	=
 );
@@ -144,6 +145,11 @@ sub _tidy_code_chunk {
 			$line .= ("\t" x $indent);
 			$line .= (' ' x $continuation_indent) if $continuation_indent > 0;
 			$pending_indent = 0;
+		}
+
+		if ( _is_chain_op($val) and $line =~ /\S/ ) {
+			push @out_lines, _rstrip($line);
+			$line = ("\t" x ( $indent + 1 ));
 		}
 
 			my $need_before = _need_space_before( \@tokens, $i, \%pair_for );
@@ -281,6 +287,12 @@ sub _split_pod_segments {
 	}
 
 	return @segments;
+}
+
+sub _is_chain_op {
+	my ( $val ) = @_;
+
+	return $val eq '▷' || $val eq '◁' || $val eq '|>' || $val eq '<|';
 }
 
 sub _normalize_tokens {
@@ -444,6 +456,9 @@ sub _need_space_before {
 
 	if ( $v eq '(' or $v eq '[' ) {
 		if ( $pv eq ',' ) {
+			return 1;
+		}
+		if ( _is_binary_op( $tokens, $i - 1 ) ) {
 			return 1;
 		}
 		if ( $prev->is_KW and $CONTROL_KW{ $prev->value } ) {

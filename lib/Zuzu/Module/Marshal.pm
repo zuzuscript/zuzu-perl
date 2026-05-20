@@ -1119,7 +1119,10 @@ sub _source_expr {
 	}
 	elsif ( blessed($expr) and $expr->isa('Zuzu::AST::Expr::Binary') ) {
 		$prec = _source_binary_prec( $expr->op );
-		my $right_parent_prec = $expr->op eq '**' ? $prec - 1 : $prec;
+		my $right_parent_prec =
+			( $expr->op eq '**' or $expr->op eq '◁' or $expr->op eq '<|' )
+			? $prec - 1
+			: $prec;
 		$source = join(
 			' ',
 			_source_expr( $expr->left, $prec, 'left' ),
@@ -1275,6 +1278,7 @@ sub _source_expr {
 sub _source_binary_prec {
 	my ( $op ) = @_;
 
+	return 0 if $op eq '▷' || $op eq '|>' || $op eq '◁' || $op eq '<|';
 	return 1 if $op eq 'or' || $op eq '⋁';
 	return 2 if $op eq 'xor' || $op eq '⊻';
 	return 3 if $op eq 'and' || $op eq '⋀' || $op eq 'nand' || $op eq '⊼';

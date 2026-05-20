@@ -131,6 +131,26 @@ like(
 	'does not force a blank line before final return in very short functions',
 );
 
+my $chain_tidy = Zuzu::Tidy->tidy(
+	"4▷1+(2*^^)▷say(^^+^^)\n",
+	filename => 'chain.zzs',
+);
+is(
+	$chain_tidy,
+	"4\n\t▷ 1 + ( 2 * ^^ )\n\t▷ say( ^^ + ^^ );\n",
+	'formats Unicode chain operators vertically',
+);
+
+my $chain_alias_tidy = Zuzu::Tidy->tidy(
+	"4|>1+(2*^^)|>say(^^+^^)\n",
+	filename => 'chain-alias.zzs',
+);
+is(
+	$chain_alias_tidy,
+	"4\n\t|> 1 + ( 2 * ^^ )\n\t|> say( ^^ + ^^ );\n",
+	'formats ASCII chain operator aliases vertically without rewriting them',
+);
+
 my $spacing_src = <<'SRC';
 let i:=1
 i++
