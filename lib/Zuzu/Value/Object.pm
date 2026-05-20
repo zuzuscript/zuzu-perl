@@ -15,14 +15,23 @@ has 'demolish_hook' => ( is => 'rw' );
 
 sub is_truthy { 1 }
 
-sub DESTROY {
+sub run_demolish_hook {
 	my ( $self ) = @_;
 
 	my $hook = $self->demolish_hook;
 	return if ref($hook) ne 'CODE';
+	$self->demolish_hook(undef);
 
 	local $@;
 	eval { $hook->($self); 1 } or return;
+
+	return;
+}
+
+sub DESTROY {
+	my ( $self ) = @_;
+
+	$self->run_demolish_hook;
 
 	return;
 }
@@ -71,6 +80,10 @@ Per-slot const flags enforcing assignment restrictions.
 =head2 is_truthy
 
 Returns this runtime value's truthiness in ZuzuScript.
+
+=head2 run_demolish_hook
+
+Runs and clears the optional lifecycle cleanup callback.
 
 =head2 DESTROY
 

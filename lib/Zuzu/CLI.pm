@@ -94,10 +94,14 @@ sub run {
 			my $value = defined $err->{value} ? $err->{value} : '';
 			my $text = _render_thrown_value( $runtime, $value );
 			print STDERR "$text\n";
+			$runtime->finish;
 			return 255;
 		}
+		$runtime->finish;
 		die $err;
 	}
+
+	$runtime->finish;
 
 	return 0;
 }

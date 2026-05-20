@@ -224,6 +224,7 @@ sub BUILD {
 	$self->{_bound_method_cache} = {};
 	$self->{_module_builtin_aliases} = [];
 	$self->{_module_builtin_slot_set} = {};
+	$self->{_demolish_objects} = [];
 	$self->{_scheduler} = Zuzu::Runtime::Async::Scheduler->new(
 		runtime => $self,
 	);
@@ -233,6 +234,24 @@ sub BUILD {
 	$self->_refresh_module_builtin_alias_cache;
 
 	return;
+}
+
+sub finish {
+	my ( $self ) = @_;
+
+	return $self if $self->{_finishing};
+	local $self->{_finishing} = 1;
+
+	while ( @{ $self->{_demolish_objects} // [] } ) {
+		my $object = pop @{ $self->{_demolish_objects} };
+		next
+			if !blessed($object)
+			or !$object->isa('Zuzu::Value::Object')
+			or !$object->can('run_demolish_hook');
+		$object->run_demolish_hook;
+	}
+
+	return $self;
 }
 
 sub DEMOLISH {
@@ -4411,6 +4430,8 @@ sub _install_object_demolish_hook {
 				return;
 			}
 		);
+		push @{ $self->{_demolish_objects} }, $object;
+		weaken( $self->{_demolish_objects}[-1] );
 	}
 
 	return $object;
@@ -6687,6 +6708,10 @@ Constructs and returns a new instance of this class.
 =head2 evaluate
 
 Dispatches this AST node to the matching runtime evaluator.
+
+=head2 finish
+
+Runs pending object demolition hooks for a completed runtime.
 
 =head2 call
 
