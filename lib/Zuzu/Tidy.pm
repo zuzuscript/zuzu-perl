@@ -34,6 +34,33 @@ my %UNARY_PREFIX_OP = map { $_ => 1 } qw(
 my %NO_SPACE_BEFORE = map { $_ => 1 } ( ',', ';', ')', ']', '}', '⌋', '⌉', '.', ':' );
 my %NO_SPACE_AFTER  = map { $_ => 1 } ( '(', '[', '{', '⌊', '⌈', '.' );
 my %CONTROL_KW = map { $_ => 1 } qw( if else while for switch catch unless );
+my %CANONICAL_OPERATOR_SPELLING = (
+	'*'            => '×',
+	'/'            => '÷',
+	'<='           => '≤',
+	'>='           => '≥',
+	'<=>'          => '≶',
+	'≷'            => '≶',
+	'=='           => '≡',
+	'!='           => '≢',
+	'not'          => '¬',
+	'sqrt'         => '√',
+	'and'          => '⋀',
+	'nand'         => '⊼',
+	'xor'          => '⊻',
+	'or'           => '⋁',
+	'union'        => '⋃',
+	'intersection' => '⋂',
+	'\\'           => '∖',
+	'in'           => '∈',
+	'subsetof'     => '⊂',
+	'supersetof'   => '⊃',
+	'equivalentof' => '⊂⊃',
+	'|>'           => '▷',
+	'<|'           => '◁',
+	'*='           => '×=',
+	'/='           => '÷=',
+);
 
 sub tidy {
 	my ( $class, $src, %opts ) = @_;
@@ -125,7 +152,8 @@ sub _tidy_code_chunk {
 
 	for ( my $i = 0; $i <= $#tokens; $i++ ) {
 		my $tok = $tokens[$i];
-			my $val = _token_text($tok);
+		my $val = _token_text($tok);
+		my $emit_val = _display_token_text( \@tokens, $i, %opts );
 		my $prev = $i > 0 ? $tokens[$i - 1] : undef;
 		my $next = $i < $#tokens ? $tokens[$i + 1] : undef;
 		my $just_closed_inline = 0;
@@ -154,7 +182,7 @@ sub _tidy_code_chunk {
 
 			my $need_before = _need_space_before( \@tokens, $i, \%pair_for );
 			$line .= ' ' if $need_before and $line =~ /\S/ and $line !~ /[ \t]\z/;
-		$line .= $val;
+		$line .= $emit_val;
 
 		if ( $val eq '{' ) {
 			my $is_inline = _is_inline_brace( \@tokens, $i, \%pair_for );
@@ -581,6 +609,74 @@ sub _is_module_path_slash {
 	return 1;
 }
 
+sub _display_token_text {
+	my ( $tokens, $i, %opts ) = @_;
+	my $tok = $tokens->[$i];
+	my $raw = _token_text($tok);
+
+	return $raw if !$opts{canonical_operators};
+	return $raw if !exists $CANONICAL_OPERATOR_SPELLING{$raw};
+	return $raw if !_can_canonicalize_operator( $tokens, $i );
+
+	return $CANONICAL_OPERATOR_SPELLING{$raw};
+}
+
+sub _can_canonicalize_operator {
+	my ( $tokens, $i ) = @_;
+	my $tok = $tokens->[$i];
+	my $raw = _token_text($tok);
+
+	return 0 if !$tok->is_OP and !$tok->is_KW;
+	return 0 if _is_module_path_slash( $tokens, $i );
+	return 0 if _is_import_wildcard( $tokens, $i );
+	return 0 if $raw eq 'in' and _is_for_loop_in_keyword( $tokens, $i );
+	return 1 if $raw eq '*=' or $raw eq '/=';
+	return 1 if _is_chain_op($raw);
+	return 1 if _is_unary_operator( $tokens, $i );
+	return 1 if _is_binary_op( $tokens, $i );
+
+	return 0;
+}
+
+sub _is_import_wildcard {
+	my ( $tokens, $i ) = @_;
+	return 0 if $i < 0 or $i > $#$tokens;
+	return 0 if !$tokens->[$i]->is_OP('*');
+
+	for ( my $k = $i - 1; $k >= 0; $k-- ) {
+		my $v = defined $tokens->[$k]->value ? $tokens->[$k]->value : '';
+		return 0 if $v eq ';' or $v eq '{' or $v eq '}';
+		return 1 if $tokens->[$k]->is_KW('import');
+	}
+
+	return 0;
+}
+
+sub _is_for_loop_in_keyword {
+	my ( $tokens, $i ) = @_;
+	return 0 if $i < 0 or $i > $#$tokens;
+	return 0 if !$tokens->[$i]->is_KW('in');
+
+	my @stack;
+	for my $k ( 0 .. $i - 1 ) {
+		my $v = defined $tokens->[$k]->value ? $tokens->[$k]->value : '';
+		if ( $v eq '(' ) {
+			push @stack, $k;
+			next;
+		}
+		if ( $v eq ')' ) {
+			pop @stack if @stack;
+		}
+	}
+	return 0 if !@stack;
+
+	my $open_i = $stack[-1];
+	return 0 if $open_i == 0;
+	return 1 if $tokens->[ $open_i - 1 ]->is_KW('for');
+
+	return 0;
+}
+
 sub _is_binary_op {
 	my ( $tokens, $i ) = @_;
 	return 0 if $i < 0 or $i > $#$tokens;
@@ -615,7 +711,17 @@ sub _is_unary_operator {
 
 	return 1 if $i == 0;
 	my $prev = $tokens->[ $i - 1 ];
-	return 1 if $prev->is_OP and $prev->value ne ')' and $prev->value ne ']';
+	if ( $prev->is_OP ) {
+		my $pv = defined $prev->value ? $prev->value : '';
+		return 1 if $pv ne ')'
+			and $pv ne ']'
+			and $pv ne '}'
+			and $pv ne '⌋'
+			and $pv ne '⌉'
+			and $pv ne '»'
+			and $pv ne '>>'
+			and $pv ne '>>>';
+	}
 	return 1 if $prev->is_KW and $prev->value ne 'true' and $prev->value ne 'false' and $prev->value ne 'null';
 
 	return 0;
@@ -1205,6 +1311,11 @@ Zuzu::Tidy - format ZuzuScript source with consistent style
   use Zuzu::Tidy;
 
   my $tidied = Zuzu::Tidy->tidy( $source, filename => 'main.zzs' );
+  my $canonical = Zuzu::Tidy->tidy(
+      $source,
+      filename => 'main.zzs',
+      canonical_operators => 1,
+  );
 
 =head1 DESCRIPTION
 
@@ -1221,6 +1332,10 @@ needed.
 =head2 tidy
 
 Returns tidied source text as a single UTF-8 string.
+
+Pass C<canonical_operators =E<gt> 1> to rewrite non-canonical operator
+spellings such as C<*> and C<< |> >> to canonical forms such as C<×> and
+C<▷>. This option is disabled by default.
 
 =head1 SEE ALSO
 

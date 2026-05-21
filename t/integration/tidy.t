@@ -1,5 +1,6 @@
 use Test2::V0;
 
+use Encode qw( decode );
 use File::Spec;
 use File::Temp qw( tempdir );
 
@@ -150,6 +151,53 @@ is(
 	"4\n\t|> 1 + ( 2 * ^^ )\n\t|> say( ^^ + ^^ );\n",
 	'formats ASCII chain operator aliases vertically without rewriting them',
 );
+
+my $canonical_operator_src = <<'SRC';
+from foo/bar import *;
+let a:=2*3/4
+a*=5
+a/=2
+let cmp:=a<=10 and a>=1 or a<=>3 == 0 != false
+let sets:=<<1>> union <<2>> intersection <<2>>
+let diff:=<<1,2>> \ <<2>>
+let member:=1 in <<1>>
+for (let item in [1,2]){say item}
+4|>1+(2*^^)|>say(^^+^^)
+SRC
+
+my $canonical_default_tidy = Zuzu::Tidy->tidy(
+	$canonical_operator_src,
+	filename => 'canonical-default.zzs',
+);
+like $canonical_default_tidy, qr/\nlet a := 2 \* 3 \/ 4;\n/,
+	'preserves non-canonical operator spellings by default';
+like $canonical_default_tidy, qr/\n\t\|> 1 \+ \( 2 \* \^\^ \)/,
+	'preserves ASCII chain aliases by default';
+
+my $canonical_operator_tidy = Zuzu::Tidy->tidy(
+	$canonical_operator_src,
+	filename => 'canonical-operators.zzs',
+	canonical_operators => 1,
+);
+like $canonical_operator_tidy, qr/\Afrom foo\/bar import \*;\n/,
+	'canonical operator mode preserves import paths and wildcards';
+like $canonical_operator_tidy, qr/\nlet a := 2 × 3 ÷ 4;\n/,
+	'canonical operator mode rewrites arithmetic operator aliases';
+like $canonical_operator_tidy, qr/\na ×= 5;\na ÷= 2;\n/,
+	'canonical operator mode rewrites assignment operator aliases';
+like $canonical_operator_tidy,
+	qr/\nlet cmp := a ≤ 10 ⋀ a ≥ 1 ⋁ a ≶ 3 ≡ 0 ≢ false;\n/,
+	'canonical operator mode rewrites comparison and logical aliases';
+like $canonical_operator_tidy, qr/\nlet sets := << 1 >> ⋃ << 2 >> ⋂ << 2 >>;\n/,
+	'canonical operator mode rewrites named set operators';
+like $canonical_operator_tidy, qr/\nlet diff := << 1, 2 >> ∖ << 2 >>;\n/,
+	'canonical operator mode rewrites set difference alias';
+like $canonical_operator_tidy, qr/\nlet member := 1 ∈ << 1 >>;\n/,
+	'canonical operator mode rewrites binary in operator';
+like $canonical_operator_tidy, qr/\nfor \( let item in \[ 1, 2 \] \) \{\n/,
+	'canonical operator mode preserves for-loop in syntax';
+like $canonical_operator_tidy, qr/\n\t▷ 1 \+ \( 2 × \^\^ \)\n\t▷ say/,
+	'canonical operator mode rewrites chain aliases';
 
 my $spacing_src = <<'SRC';
 let i:=1
@@ -341,6 +389,19 @@ my $output = qx{$cmd};
 my $exit = $? >> 8;
 is $exit, 0, 'zuzu-tidy.pl CLI exits successfully';
 is $output, "let n := 1;\n", 'zuzu-tidy.pl CLI prints tidied output';
+
+my $canonical_script = File::Spec->catfile( $tmpdir, 'cli-canonical.zzs' );
+open my $cfh, '>:encoding(UTF-8)', $canonical_script
+	or die "Could not create $canonical_script: $!";
+print {$cfh} "let n:=2*3\n";
+close $cfh;
+
+my $canonical_cmd = "$^X $bin --canonical-operators $canonical_script";
+my $canonical_output = decode( 'UTF-8', qx{$canonical_cmd} );
+my $canonical_exit = $? >> 8;
+is $canonical_exit, 0, 'zuzu-tidy.pl --canonical-operators exits successfully';
+is $canonical_output, "let n := 2 × 3;\n",
+	'zuzu-tidy.pl --canonical-operators prints canonical operators';
 
 my $in_place_cmd = "$^X $bin --in-place $script";
 my $in_place_output = qx{$in_place_cmd};

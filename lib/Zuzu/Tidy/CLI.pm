@@ -39,7 +39,11 @@ sub run {
 	my $source = do { local $/; <$in_fh> };
 	close $in_fh;
 
-	my $tidied = Zuzu::Tidy->tidy( $source, filename => $file );
+	my $tidied = Zuzu::Tidy->tidy(
+		$source,
+		filename => $file,
+		canonical_operators => $options->{canonical_operators},
+	);
 
 	if ( $options->{in_place} ) {
 		open my $out_fh, '>:encoding(UTF-8)', $file
@@ -58,6 +62,7 @@ sub _parse_options {
 
 	my $options = {
 		in_place => 0,
+		canonical_operators => 0,
 	};
 
 	Configure(
@@ -67,6 +72,7 @@ sub _parse_options {
 	my $ok = GetOptionsFromArray(
 		$argv,
 		'i|in-place' => \$options->{in_place},
+		'canonical-operators!' => \$options->{canonical_operators},
 		'h|help' => \$options->{help},
 	);
 	return ( undef, undef, undef ) if not $ok;
@@ -84,7 +90,7 @@ sub _print_usage {
 	if ( defined $message and $message ne '' ) {
 		print STDERR $message, "\n";
 	}
-	print STDERR "Usage: zuzu-tidy.pl [--in-place] path/to/script.zzs\n";
+	print STDERR "Usage: zuzu-tidy.pl [--in-place] [--canonical-operators] path/to/script.zzs\n";
 
 	return;
 }
@@ -98,6 +104,7 @@ Zuzu::Tidy::CLI - command-line wrapper for Zuzu::Tidy
 =head1 SYNOPSIS
 
   zuzu-tidy.pl path/to/script.zzs
+  zuzu-tidy.pl --canonical-operators path/to/script.zzs
   zuzu-tidy.pl --in-place path/to/script.zzs
 
 =head1 DESCRIPTION
@@ -105,6 +112,10 @@ Zuzu::Tidy::CLI - command-line wrapper for Zuzu::Tidy
 Provides the executable interface for C<bin/zuzu-tidy.pl>. The command reads a
 ZuzuScript file, formats it via C<Zuzu::Tidy>, and writes to STDOUT by
 default or updates the file in-place with C<--in-place>.
+
+C<--canonical-operators> rewrites non-canonical operator spellings such as
+C<*> and C<< |> >> to canonical forms such as C<×> and C<▷>. This is
+opt-in; aliases are preserved by default.
 
 =head1 METHODS
 
