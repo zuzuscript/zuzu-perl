@@ -2440,6 +2440,14 @@ sub parse_primary {
 			}
 			last;
 		}
+		my @traits;
+		if ( $self->{tok}->is_KW('with') or $self->{tok}->is_KW('but') ) {
+			$self->_eat('KW');
+			push @traits, $self->parse_type_ref;
+			while ( $self->_maybe('OP', ',') ) {
+				push @traits, $self->parse_type_ref;
+			}
+		}
 		$self->_eat('OP', '(');
 		my @args = $self->_parse_invocation_args;
 		$self->_eat('OP', ')');
@@ -2448,6 +2456,7 @@ sub parse_primary {
 			file => $kw->file,
 			line => $kw->line,
 			class_expr => $class_expr,
+			traits => \@traits,
 			args => \@args,
 		);
 	}

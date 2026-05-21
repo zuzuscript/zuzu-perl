@@ -22,6 +22,8 @@ use Zuzu::Parser;
 use Zuzu::Parser::_Impl;
 use Zuzu::Runtime::Async::Scheduler;
 use Zuzu::Util ();
+use Zuzu::AST::Expr::TypeRef;
+use Zuzu::AST::Stmt::Class;
 use Zuzu::Value::Array;
 use Zuzu::Value::Class;
 use Zuzu::Value::Dict;
@@ -222,6 +224,7 @@ sub BUILD {
 	$self->{_module_candidate_cache} = {};
 	$self->{_method_candidate_cache} = {};
 	$self->{_bound_method_cache} = {};
+	$self->{_per_object_trait_class_cache} = {};
 	$self->{_module_builtin_aliases} = [];
 	$self->{_module_builtin_slot_set} = {};
 	$self->{_demolish_objects} = [];
@@ -2210,6 +2213,40 @@ sub eval_function_expr {
 	return $fn;
 }
 
+sub _install_trait_methods_for_class {
+	my ( $self, $klass, $traits ) = @_;
+
+	for my $trait ( @{ $traits // [] } ) {
+		for my $mname ( sort keys %{ $trait->methods // {} } ) {
+			my $source_method = $trait->methods->{ $mname };
+			my $trait_method = Zuzu::Value::Function->new(
+				name => $source_method->name,
+				params => [ @{ $source_method->params // [] } ],
+				vararg => $source_method->vararg,
+				named_vararg => $source_method->named_vararg,
+				param_types => { %{ $source_method->param_types // {} } },
+				vararg_type => $source_method->vararg_type // 'Any',
+				named_vararg_type => $source_method->named_vararg_type // 'PairList',
+				param_optional => { %{ $source_method->param_optional // {} } },
+				param_defaults => { %{ $source_method->param_defaults // {} } },
+				return_type => $source_method->return_type // 'Any',
+				body => $source_method->body,
+				closure_env => $source_method->closure_env,
+				is_async => $source_method->is_async ? 1 : 0,
+			);
+			$trait_method->{_default_typecheck_safe} = { %{ $source_method->{_default_typecheck_safe} // {} } };
+			$trait_method->{_owner_class} = $klass;
+			$trait_method->{_method_name} = $mname;
+			$trait_method->{_method_kind} = 'instance';
+			$trait_method->{_method_source} = 'trait';
+			$trait_method->{_uses_super} = $source_method->{_uses_super};
+			push @{ $klass->trait_methods->{ $mname } }, $trait_method;
+		}
+	}
+
+	return;
+}
+
 sub eval_class_def {
 	my ($self, $node) = @_;
 
@@ -2252,33 +2289,7 @@ sub eval_class_def {
 		$method_fn->{_uses_super} = $m->uses_super;
 		$self->_install_method_function( $klass->methods, $m, $method_fn );
 	}
-	for my $trait ( @traits ) {
-		for my $mname ( sort keys %{ $trait->methods // {} } ) {
-			my $source_method = $trait->methods->{ $mname };
-			my $trait_method = Zuzu::Value::Function->new(
-				name => $source_method->name,
-				params => [ @{ $source_method->params // [] } ],
-				vararg => $source_method->vararg,
-				named_vararg => $source_method->named_vararg,
-				param_types => { %{ $source_method->param_types // {} } },
-				vararg_type => $source_method->vararg_type // 'Any',
-				named_vararg_type => $source_method->named_vararg_type // 'PairList',
-				param_optional => { %{ $source_method->param_optional // {} } },
-				param_defaults => { %{ $source_method->param_defaults // {} } },
-				return_type => $source_method->return_type // 'Any',
-				body => $source_method->body,
-				closure_env => $source_method->closure_env,
-				is_async => $source_method->is_async ? 1 : 0,
-			);
-			$trait_method->{_default_typecheck_safe} = { %{ $source_method->{_default_typecheck_safe} // {} } };
-			$trait_method->{_owner_class} = $klass;
-			$trait_method->{_method_name} = $mname;
-			$trait_method->{_method_kind} = 'instance';
-			$trait_method->{_method_source} = 'trait';
-			$trait_method->{_uses_super} = $source_method->{_uses_super};
-			push @{ $klass->trait_methods->{ $mname } }, $trait_method;
-		}
-	}
+	$self->_install_trait_methods_for_class( $klass, \@traits );
 	for my $m (@{ $node->static_methods // [] }) {
 		my $static_fn = $self->_function_from_method_decl( $m, $self->_env );
 		$static_fn->{_owner_class} = $klass;
@@ -4343,6 +4354,25 @@ sub eval_new {
 	die Zuzu::Error->new_runtime(message => "new expects a Class", file => $node->file, line => $node->line)
 		if !blessed($class_val) or !$class_val->isa('Zuzu::Value::Class');
 
+	if ( @{ $node->traits // [] } ) {
+		my @traits;
+		for my $tref ( @{ $node->traits // [] } ) {
+			my $trait = $tref->evaluate($self);
+			die Zuzu::Error->new_runtime(
+				message => "Composed type is not a Trait",
+				file => $node->file,
+				line => $node->line,
+			) if !blessed($trait) or !$trait->isa('Zuzu::Value::Trait');
+			push @traits, $trait;
+		}
+		$class_val = $self->_per_object_trait_class(
+			$class_val,
+			\@traits,
+			$node->file,
+			$node->line,
+		);
+	}
+
 	my ( $positional, $named ) = $self->_evaluate_invocation_args( $node->args // [] );
 
 	my $native_constructor = $self->_native_constructor_for( $class_val );
@@ -4371,6 +4401,69 @@ sub eval_new {
 		$node->line,
 		1,
 	);
+}
+
+sub _per_object_trait_class {
+	my ( $self, $base_class, $traits, $file, $line ) = @_;
+
+	my @ids = map { refaddr($_) // 0 } ( $base_class, @{ $traits // [] } );
+	my $cache_key = join "\x1f", @ids;
+	return $self->{_per_object_trait_class_cache}{$cache_key}
+		if exists $self->{_per_object_trait_class_cache}{$cache_key};
+
+	my $capture_env = Zuzu::Env->_new_fast( $self->_env );
+	$capture_env->declare(
+		'__zuzu_per_object_base',
+		$base_class,
+		1,
+		'Class',
+	);
+	my @trait_refs;
+	for my $i ( 0 .. $#{ $traits // [] } ) {
+		my $name = "__zuzu_per_object_trait_$i";
+		$capture_env->declare( $name, $traits->[$i], 1, 'Trait' );
+		push @trait_refs, Zuzu::AST::Expr::TypeRef->new(
+			file => $file,
+			line => $line,
+			root => $name,
+			member => undef,
+		);
+	}
+
+	my $source_node = Zuzu::AST::Stmt::Class->new(
+		file => $file,
+		line => $line,
+		name => $base_class->name,
+		parent => Zuzu::AST::Expr::TypeRef->new(
+			file => $file,
+			line => $line,
+			root => '__zuzu_per_object_base',
+			member => undef,
+		),
+		traits => \@trait_refs,
+		fields => [],
+		methods => [],
+		static_methods => [],
+		classes => [],
+	);
+
+	my $klass = Zuzu::Value::Class->new(
+		name => $base_class->name,
+		parent => $base_class,
+		traits => [ @{ $traits // [] } ],
+		field_specs => [],
+		methods => {},
+		trait_methods => {},
+		static_methods => {},
+		nested_classes => {},
+		closure_env => $capture_env,
+		source_node => $source_node,
+	);
+	$self->_install_trait_methods_for_class( $klass, $traits );
+
+	$self->{_per_object_trait_class_cache}{$cache_key} = $klass;
+
+	return $klass;
 }
 
 sub _make_instance {

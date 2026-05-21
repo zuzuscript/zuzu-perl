@@ -7,6 +7,7 @@ our $VERSION = '0.001';
 use Moo;
 
 has 'class_expr' => ( is => 'rw' );
+has 'traits' => ( is => 'rw' );
 has 'args' => ( is => 'rw' );
 
 with 'Zuzu::AST::Role::Node';
@@ -39,6 +40,12 @@ Consumes C<Zuzu::AST::Role::Node>.
 Type: B<Zuzu::AST::Role::Node>.
 
 Expression that resolves to the class value being instantiated.
+
+=head2 traits
+
+Type: B<ArrayRef[Zuzu::AST::Role::Node]>.
+
+Optional trait references to compose for this one constructed object.
 
 =head2 args
 

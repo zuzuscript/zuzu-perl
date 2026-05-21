@@ -377,6 +377,9 @@ sub _visit_node {
 
 	if ( $node->isa('Zuzu::AST::Expr::New') ) {
 		$self->_visit_node( $node->class_expr );
+		for my $trait_ref ( @{ $node->traits // [] } ) {
+			$self->_visit_node( $trait_ref );
+		}
 		for my $pair ( @{ $node->args // [] } ) {
 			$self->_visit_node( $pair->[1] );
 		}

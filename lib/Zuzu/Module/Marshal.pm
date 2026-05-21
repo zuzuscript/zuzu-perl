@@ -655,6 +655,9 @@ sub _collect_free_names_from_expr {
 	}
 	if ( $expr->isa('Zuzu::AST::Expr::New') ) {
 		_collect_free_names_from_expr( $expr->class_expr, $bound, $free );
+		for my $trait ( @{ $expr->traits // [] } ) {
+			_collect_free_names_from_expr( $trait, $bound, $free );
+		}
 		_collect_free_names_from_args( $expr->args, $bound, $free );
 		return;
 	}
@@ -1241,8 +1244,14 @@ sub _source_expr {
 	}
 	elsif ( blessed($expr) and $expr->isa('Zuzu::AST::Expr::New') ) {
 		$source = 'new '
-			. _source_expr( $expr->class_expr, 95 )
-			. '('
+			. _source_expr( $expr->class_expr, 95 );
+		if ( @{ $expr->traits // [] } ) {
+			$source .= ' with ' . join(
+				', ',
+				map { _source_expr($_) } @{ $expr->traits },
+			);
+		}
+		$source .= '('
 			. _source_args( $expr->args )
 			. ')';
 	}
