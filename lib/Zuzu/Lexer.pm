@@ -72,6 +72,224 @@ sub _emit {
 	return $tok;
 }
 
+sub _read_escape {
+	my ( $self, $kind, $line, $col ) = @_;
+
+	die "Unterminated $kind literal at line $line, col $col" if $self->_eof;
+	my $e = $self->_peek(1);
+	my %simple = (
+		n => "\n",
+		t => "\t",
+		r => "\r",
+		'"' => '"',
+		"'" => "'",
+		'`' => '`',
+		'/' => '/',
+		'$' => '$',
+		'\\' => '\\',
+	);
+	if ( exists $simple{$e} ) {
+		$self->_adv(1);
+		return $simple{$e};
+	}
+	if ( $e eq 'x' ) {
+		my $hex = $self->_peek(3);
+		die "Invalid $kind escape at line $line, col $col"
+			if $hex !~ /\Ax([0-9A-Fa-f]{2})\z/;
+		$self->_adv(3);
+		return $kind eq 'binary string' ? pack( 'C', hex($1) ) : chr( hex($1) );
+	}
+	if ( $e eq 'u' ) {
+		die "Invalid $kind escape at line $line, col $col"
+			if $kind eq 'binary string';
+		my $hex = $self->_peek(5);
+		die "Invalid $kind escape at line $line, col $col"
+			if $hex !~ /\Au([0-9A-Fa-f]{4})\z/;
+		my $cp = hex($1);
+		die "Invalid $kind escape at line $line, col $col"
+			if $cp >= 0xD800 and $cp <= 0xDFFF;
+		$self->_adv(5);
+		return chr($cp);
+	}
+
+	die "Invalid $kind escape at line $line, col $col";
+}
+
+sub _read_single_line_literal {
+	my ( $self, $quote, $kind, $line, $col ) = @_;
+
+	$self->_adv(1);
+	my $out = '';
+	while ( !$self->_eof ) {
+		my $c = $self->_peek(1);
+		last if $c eq $quote;
+		if ( $c eq "\\" ) {
+			$self->_adv(1);
+			$out .= $self->_read_escape( $kind, $line, $col );
+			next;
+		}
+		$out .= $c;
+		$self->_adv(1);
+	}
+	die "Unterminated $kind literal at line $line, col $col" if $self->_eof;
+	$self->_adv(1);
+
+	return $out;
+}
+
+sub _split_interpolated_source {
+	my ( $self, $src, $line, $col, $kind, $allow_escaped_dollar ) = @_;
+
+	my @parts;
+	my $text = '';
+	my $i = 0;
+	my $len = length $src;
+	while ( $i < $len ) {
+		my $ch = substr( $src, $i, 1 );
+		if ( $allow_escaped_dollar and $ch eq "\\" and $i + 1 < $len and substr( $src, $i + 1, 1 ) eq '$' ) {
+			$text .= '\\$';
+			$i += 2;
+			next;
+		}
+		if ( $ch eq '$' and $i + 1 < $len and substr( $src, $i + 1, 1 ) eq '{' ) {
+			push @parts, { text => $text } if $text ne '';
+			$text = '';
+			$i += 2;
+			my $start = $i;
+			my $depth = 1;
+			my $quote;
+			my $line_comment = 0;
+			my $block_comment = 0;
+			while ( $i < $len ) {
+				my $c = substr( $src, $i, 1 );
+				my $next = $i + 1 < $len ? substr( $src, $i + 1, 1 ) : '';
+				if ($line_comment) {
+					$line_comment = 0 if $c eq "\n";
+					$i++;
+					next;
+				}
+				if ($block_comment) {
+					if ( $c eq '*' and $next eq '/' ) {
+						$i += 2;
+						$block_comment = 0;
+						next;
+					}
+					$i++;
+					next;
+				}
+				if ( defined $quote ) {
+					if ( $c eq "\\" ) {
+						$i += 2;
+						next;
+					}
+					if ( $c eq $quote ) {
+						$quote = undef;
+					}
+					$i++;
+					next;
+				}
+				if ( $c eq '"' or $c eq "'" or $c eq '`' ) {
+					$quote = $c;
+					$i++;
+					next;
+				}
+				if ( $c eq '/' and $next eq '/' ) {
+					$line_comment = 1;
+					$i += 2;
+					next;
+				}
+				if ( $c eq '/' and $next eq '*' ) {
+					$block_comment = 1;
+					$i += 2;
+					next;
+				}
+				if ( $c eq '{' ) {
+					$depth++;
+					$i++;
+					next;
+				}
+				if ( $c eq '}' ) {
+					$depth--;
+					last if $depth == 0;
+					$i++;
+					next;
+				}
+				$i++;
+			}
+			die "Unterminated $kind interpolation at line $line, col $col" if $i >= $len;
+			push @parts, { expr => substr( $src, $start, $i - $start ) };
+			$i++;
+			next;
+		}
+		$text .= $ch;
+		$i++;
+	}
+	push @parts, { text => $text } if $text ne '' or !@parts;
+
+	return \@parts;
+}
+
+sub _decode_interpolated_text_parts {
+	my ( $self, $parts, $kind, $line, $col ) = @_;
+
+	for my $part ( @{$parts} ) {
+		next if !exists $part->{text};
+		my $src = $part->{text};
+		my $out = '';
+		my $i = 0;
+		while ( $i < length $src ) {
+			my $c = substr( $src, $i, 1 );
+			if ( $c eq "\\" ) {
+				$i++;
+				die "Unterminated $kind literal at line $line, col $col" if $i >= length $src;
+				my $e = substr( $src, $i, 1 );
+				my %simple = (
+					n => "\n",
+					t => "\t",
+					r => "\r",
+					'"' => '"',
+					"'" => "'",
+					'`' => '`',
+					'/' => '/',
+					'$' => '$',
+					'\\' => '\\',
+				);
+				if ( exists $simple{$e} ) {
+					$out .= $simple{$e};
+					$i++;
+					next;
+				}
+				if ( $e eq 'x' ) {
+					my $hex = substr( $src, $i, 3 );
+					die "Invalid $kind escape at line $line, col $col"
+						if $hex !~ /\Ax([0-9A-Fa-f]{2})\z/;
+					$out .= chr( hex($1) );
+					$i += 3;
+					next;
+				}
+				if ( $e eq 'u' ) {
+					my $hex = substr( $src, $i, 5 );
+					die "Invalid $kind escape at line $line, col $col"
+						if $hex !~ /\Au([0-9A-Fa-f]{4})\z/;
+					my $cp = hex($1);
+					die "Invalid $kind escape at line $line, col $col"
+						if $cp >= 0xD800 and $cp <= 0xDFFF;
+					$out .= chr($cp);
+					$i += 5;
+					next;
+				}
+				die "Invalid $kind escape at line $line, col $col";
+				next;
+			}
+			$out .= $c;
+			$i++;
+		}
+		$part->{text} = $out;
+	}
+
+	return $parts;
+}
+
 sub _can_start_regexp {
 	my ( $self ) = @_;
 	my $prev = $self->last_token;
@@ -95,12 +313,14 @@ sub _read_regexp_literal {
 	my ( $self, $line, $col ) = @_;
 
 	$self->_adv(1); # leading /
-	my $pattern = '';
+	my $start = $self->pos;
 	my $escaped = 0;
+	my $in_class = 0;
 
 	while ( !$self->_eof ) {
 		my $c = $self->_peek(1);
-		if ( !$escaped and $c eq '/' ) {
+		if ( !$escaped and !$in_class and $c eq '/' ) {
+			my $pattern = substr( $self->src, $start, $self->pos - $start );
 			$self->_adv(1);
 			my $flags = '';
 			while ( !$self->_eof ) {
@@ -111,11 +331,16 @@ sub _read_regexp_literal {
 				$self->_adv(1);
 			}
 
-			return $self->_emit( 'REGEXP', { pattern => $pattern, flags => $flags }, $line, $col );
+			my $parts = $self->_split_interpolated_source( $pattern, $line, $col, 'regexp', 1 );
+			return $self->_emit( 'REGEXP', { pattern => $pattern, parts => $parts, flags => $flags }, $line, $col );
 		}
-		$pattern .= $c;
-		$escaped = ( !$escaped and $c eq "\\" ) ? 1 : 0;
-		$escaped = 0 if $escaped and $c ne "\\";
+		if ( !$escaped and $c eq '[' ) {
+			$in_class = 1;
+		}
+		elsif ( !$escaped and $c eq ']' ) {
+			$in_class = 0;
+		}
+		$escaped = !$escaped && $c eq "\\" ? 1 : 0;
 		$self->_adv(1);
 	}
 
@@ -245,41 +470,14 @@ sub next_token {
 					$self->_adv(3);
 					my $start = $self->pos;
 					while (!$self->_eof && $self->_peek(3) ne '"""') { $self->_adv(1); }
+					die "Unterminated string literal at line $line, col $col" if $self->_eof;
 					my $val = substr($self->src, $start, $self->pos - $start);
-					$self->_adv(3) if !$self->_eof;
+					$self->_adv(3);
 
 					return $self->_emit('STRING', $val, $line, $col);
 				}
-				else {
-					$self->_adv(1);
-					my $out = '';
-					while (!$self->_eof) {
-						my $c = $self->_peek(1);
-						last if $c eq '"';
-						if ($c eq "\\") {
-							$self->_adv(1);
-							my $e = $self->_peek(1);
-							my %m = ( n => "\n", t => "\t", r => "\r", '"' => '"', '\\' => '\\' );
-							if ( $e eq 'x' ) {
-								my $hex = $self->_peek(3);
-								if ( $hex !~ /\Ax([0-9A-Fa-f]{2})\z/ ) {
-									die "Invalid string escape at line $line, col $col";
-								}
-								$out .= chr( hex($1) );
-								$self->_adv(3);
-								next;
-							}
-							$out .= ($m{$e} // $e);
-							$self->_adv(1);
-							next;
-						}
-						$out .= $c;
-						$self->_adv(1);
-					}
-					$self->_adv(1) if !$self->_eof;
-
-					return $self->_emit('STRING', $out, $line, $col);
-				}
+				my $out = $self->_read_single_line_literal( '"', 'string', $line, $col );
+				return $self->_emit('STRING', $out, $line, $col);
 			}
 			if ( $ch eq "'" ) {
 				if ( $self->_peek(3) eq "'''" ) {
@@ -294,118 +492,41 @@ sub next_token {
 
 					return $self->_emit( 'BINARY_STRING', $val, $line, $col );
 				}
-				$self->_adv(1);
-				my $out = '';
-				while ( !$self->_eof ) {
-					my $c = $self->_peek(1);
-					last if $c eq "'";
-					if ( $c eq "\\" ) {
-						$self->_adv(1);
-						die "Unterminated binary string literal at line $line, col $col" if $self->_eof;
-						my $e = $self->_peek(1);
-						my %m = (
-							n => "\n",
-							t => "\t",
-							r => "\r",
-							"'" => "'",
-							'\\' => '\\',
-						);
-						if ( $e eq 'x' ) {
-							my $hex = $self->_peek(3);
-							if ( $hex !~ /\Ax([0-9A-Fa-f]{2})\z/ ) {
-								die "Invalid binary escape at line $line, col $col";
-							}
-							$out .= chr( hex($1) );
-							$self->_adv(3);
-							next;
-						}
-						$out .= ( $m{$e} // $e );
-						$self->_adv(1);
-						next;
-					}
-					$out .= $c;
-					$self->_adv(1);
-				}
-				die "Unterminated binary string literal at line $line, col $col" if $self->_eof;
-				$self->_adv(1);
-
+				my $out = $self->_read_single_line_literal( "'", 'binary string', $line, $col );
 				return $self->_emit( 'BINARY_STRING', $out, $line, $col );
 			}
 			if ( $ch eq '`' ) {
 				if ( $self->_peek(3) eq '```' ) {
 					$self->_adv(3);
-					my $out = '';
-					while ( !$self->_eof ) {
-						last if $self->_peek(3) eq '```';
-						my $c = $self->_peek(1);
-						if ( $c eq "\\" ) {
-							$self->_adv(1);
-							last if $self->_eof;
-							my $e = $self->_peek(1);
-							my %m = (
-								n => "\n",
-								t => "\t",
-								r => "\r",
-								'`' => '`',
-								'\\' => '\\',
-							);
-							if ( $e eq 'x' ) {
-								my $hex = $self->_peek(3);
-								if ( $hex !~ /\Ax([0-9A-Fa-f]{2})\z/ ) {
-									die "Invalid template escape at line $line, col $col";
-								}
-								$out .= chr( hex($1) );
-								$self->_adv(3);
-								next;
-							}
-							$out .= ( $m{$e} // $e );
-							$self->_adv(1);
-							next;
-						}
-						$out .= $c;
+					my $start = $self->pos;
+					while ( !$self->_eof and $self->_peek(3) ne '```' ) {
 						$self->_adv(1);
 					}
 					die "Unterminated template literal at line $line, col $col" if $self->_eof;
+					my $src = substr( $self->src, $start, $self->pos - $start );
 					$self->_adv(3);
+					my $parts = $self->_split_interpolated_source( $src, $line, $col, 'template', 0 );
 
-					return $self->_emit( 'TEMPLATE', $out, $line, $col );
+					return $self->_emit( 'TEMPLATE', $parts, $line, $col );
 				}
 				$self->_adv(1);
-				my $out = '';
+				my $start = $self->pos;
 				while ( !$self->_eof ) {
 					my $c = $self->_peek(1);
 					last if $c eq '`';
 					if ( $c eq "\\" ) {
 						$self->_adv(1);
-						last if $self->_eof;
-						my $e = $self->_peek(1);
-						my %m = (
-							n => "\n",
-							t => "\t",
-							r => "\r",
-							'`' => '`',
-							'\\' => '\\',
-						);
-						if ( $e eq 'x' ) {
-							my $hex = $self->_peek(3);
-							if ( $hex !~ /\Ax([0-9A-Fa-f]{2})\z/ ) {
-								die "Invalid template escape at line $line, col $col";
-							}
-							$out .= chr( hex($1) );
-							$self->_adv(3);
-							next;
-						}
-						$out .= ( $m{$e} // $e );
-						$self->_adv(1);
-						next;
+						die "Unterminated template literal at line $line, col $col" if $self->_eof;
 					}
-					$out .= $c;
 					$self->_adv(1);
 				}
 				die "Unterminated template literal at line $line, col $col" if $self->_eof;
+				my $src = substr( $self->src, $start, $self->pos - $start );
 				$self->_adv(1);
+				my $parts = $self->_split_interpolated_source( $src, $line, $col, 'template', 1 );
+				$self->_decode_interpolated_text_parts( $parts, 'template', $line, $col );
 
-				return $self->_emit( 'TEMPLATE', $out, $line, $col );
+				return $self->_emit( 'TEMPLATE', $parts, $line, $col );
 			}
 
 		# identifiers/keywords (unicode)

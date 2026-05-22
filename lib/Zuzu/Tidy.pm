@@ -940,10 +940,15 @@ sub _token_text {
 	if ( $tok->is_REGEXP ) {
 		my $re = $tok->value;
 		my $flags = $re->{flags} // '';
-		return '/' . ( $re->{pattern} // '' ) . '/' . $flags;
+		my $pattern = exists $re->{parts}
+			? _flatten_interpolated_parts( $re->{parts} )
+			: ( $re->{pattern} // '' );
+		return '/' . $pattern . '/' . $flags;
 	}
 	if ( $tok->is_type('TEMPLATE') ) {
 		my $value = defined $tok->value ? $tok->value : '';
+		return '`' . _flatten_interpolated_parts( $value, 1 ) . '`'
+			if ref $value eq 'ARRAY';
 		return '`' . _escape_literal( $value, '`' ) . '`';
 	}
 	if ( $tok->is_EMPTY_SET ) {
@@ -951,6 +956,26 @@ sub _token_text {
 	}
 
 	return defined $tok->value ? $tok->value : '';
+}
+
+sub _flatten_interpolated_parts {
+	my ( $parts, $escape_text ) = @_;
+
+	return '' if ref $parts ne 'ARRAY';
+
+	my $out = '';
+	for my $part ( @$parts ) {
+		if ( exists $part->{text} ) {
+			my $text = $part->{text} // '';
+			$text = _escape_literal( $text, '`' ) if $escape_text;
+			$out .= $text;
+		}
+		elsif ( exists $part->{expr} ) {
+			$out .= '${' . ( $part->{expr} // '' ) . '}';
+		}
+	}
+
+	return $out;
 }
 
 sub _escape_literal {

@@ -1449,6 +1449,19 @@ sub _resolve_lvalue_target {
 				line => $expr->line,
 			};
 		}
+		if ( defined($col) and !ref($col) ) {
+			my $target = $self->_resolve_lvalue_target( $expr->array );
+
+			return {
+				kind => 'string_index',
+				string_ref => $target->{ref},
+				name => $target->{name},
+				env => $target->{env},
+				target_expr => $expr,
+				file => $expr->file,
+				line => $expr->line,
+			};
+		}
 		die Zuzu::Error->new_runtime(message => "Index assignment expects Array", file => $expr->file, line => $expr->line);
 	}
 	if ( blessed($expr) and $expr->isa('Zuzu::AST::Expr::DictGet') ) {
@@ -1593,7 +1606,7 @@ sub eval_assign {
 	}
 
 	my $target = $self->_resolve_lvalue_target($node->target);
-	my ( $ref, $name, $target_env, $file, $line, $slice_col, $string_ref, $pairlist, $pairlist_key )
+	my ( $ref, $name, $target_env, $file, $line, $slice_col, $string_ref, $string_index, $pairlist, $pairlist_key )
 		= (
 			$target->{ref},
 			$target->{name},
@@ -1602,6 +1615,7 @@ sub eval_assign {
 			$target->{line},
 			$target->{slice_col},
 			$target->{string_ref},
+			$target->{kind} && $target->{kind} eq 'string_index',
 			$target->{pairlist},
 			$target->{pairlist_key},
 		);
@@ -1655,15 +1669,25 @@ sub eval_assign {
 		return $slice_col;
 	}
 	if ( $string_ref ) {
-		return $self->_assign_string_slice(
-			$string_ref,
-			$node->target,
-			$rhs,
-			$name,
-			$target_env,
-			$file,
-			$line,
-		);
+		return $string_index
+			? $self->_assign_string_index(
+				$string_ref,
+				$node->target,
+				$rhs,
+				$name,
+				$target_env,
+				$file,
+				$line,
+			)
+			: $self->_assign_string_slice(
+				$string_ref,
+				$node->target,
+				$rhs,
+				$name,
+				$target_env,
+				$file,
+				$line,
+			);
 	}
 
 	my $op = $node->op;
@@ -1755,6 +1779,36 @@ sub _assign_string_slice {
 		: $size - $start;
 	my $replacement = $self->_to_String($value);
 	substr( $current, $start, $len ) = $replacement;
+	my $declared_type = defined $name
+		? (
+			defined $target_env
+			? ( $target_env->{types}{$name} // 'Any' )
+			: $self->_env->declared_type_for($name)
+		)
+		: 'Any';
+	$self->_assert_declared_type(
+		$declared_type,
+		$current,
+		$file,
+		$line,
+		$name,
+	);
+	$$string_ref = $current;
+
+	return $current;
+}
+
+sub _assign_string_index {
+	my ( $self, $string_ref, $target, $value, $name, $target_env, $file, $line ) = @_;
+
+	my $current = defined $$string_ref ? "$$string_ref" : '';
+	my $size = length($current);
+	my $idx = 0 + ( $target->index->evaluate($self) // 0 );
+	$idx += $size if $idx < 0;
+	$idx = 0 if $idx < 0;
+	$idx = $size if $idx > $size;
+	my $replacement = $self->_to_String($value);
+	substr( $current, $idx, 1 ) = $replacement;
 	my $declared_type = defined $name
 		? (
 			defined $target_env
@@ -2639,6 +2693,31 @@ sub _assert_import_target_available {
 
 sub eval_literal { $_[1]->value }
 
+sub eval_regexp_literal {
+	my ( $self, $node ) = @_;
+
+	my $pattern = '';
+	for my $part ( @{ $node->parts // [] } ) {
+		if ( ref $part eq 'HASH' and exists $part->{expr} ) {
+			$pattern .= $self->_to_OperatorString(
+				$part->{expr}->evaluate($self),
+				$node->file,
+				$node->line,
+			);
+		}
+		else {
+			$pattern .= ref $part eq 'HASH' && exists $part->{text}
+				? $part->{text}
+				: $part;
+		}
+	}
+
+	return Zuzu::Value::Regexp->new(
+		pattern => $pattern,
+		flags => $node->flags // '',
+	);
+}
+
 sub eval_var {
 	my ($self, $node) = @_;
 
@@ -3124,7 +3203,7 @@ sub _make_lvalue_ref_closure {
 			}
 			else {
 				my $target_info = $self->_resolve_lvalue_target( $target );
-				my ( $ref, $name, $target_env, $file, $line, $slice_col, $string_ref, $pairlist, $pairlist_key )
+				my ( $ref, $name, $target_env, $file, $line, $slice_col, $string_ref, $string_index, $pairlist, $pairlist_key )
 					= (
 						$target_info->{ref},
 						$target_info->{name},
@@ -3133,6 +3212,7 @@ sub _make_lvalue_ref_closure {
 						$target_info->{line},
 						$target_info->{slice_col},
 						$target_info->{string_ref},
+						$target_info->{kind} && $target_info->{kind} eq 'string_index',
 						$target_info->{pairlist},
 						$target_info->{pairlist_key},
 					);
@@ -3206,15 +3286,28 @@ sub _make_lvalue_ref_closure {
 					$ret = $newval;
 				}
 				elsif ( $string_ref ) {
-					$self->_assign_string_slice(
-						$string_ref,
-						$target,
-						$newval,
-						$name,
-						$target_env,
-						$file,
-						$line,
-					);
+					if ( $string_index ) {
+						$self->_assign_string_index(
+							$string_ref,
+							$target,
+							$newval,
+							$name,
+							$target_env,
+							$file,
+							$line,
+						);
+					}
+					else {
+						$self->_assign_string_slice(
+							$string_ref,
+							$target,
+							$newval,
+							$name,
+							$target_env,
+							$file,
+							$line,
+						);
+					}
 					$ret = $newval;
 				}
 				else {

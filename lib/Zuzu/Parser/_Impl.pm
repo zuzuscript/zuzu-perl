@@ -21,6 +21,7 @@ use Zuzu::AST::Expr::MemberCall;
 use Zuzu::AST::Expr::New;
 use Zuzu::AST::Expr::PairList;
 use Zuzu::AST::Expr::Range;
+use Zuzu::AST::Expr::Regexp;
 use Zuzu::AST::Expr::Set;
 use Zuzu::AST::Expr::Slice;
 use Zuzu::AST::Expr::Spawn;
@@ -2295,12 +2296,26 @@ sub parse_primary {
 
 		return $self->_parse_template_expression($t);
 	}
-	if ($t->is_REGEXP) {
-		$self->{tok} = $self->{lexer}->next_token;
-		my $spec = $t->value // {};
+		if ($t->is_REGEXP) {
+			$self->{tok} = $self->{lexer}->next_token;
+			my $spec = $t->value // {};
+			my $parts = $spec->{parts} // [ { text => $spec->{pattern} // '' } ];
+			if ( grep { ref $_ eq 'HASH' and exists $_->{expr} } @{$parts} ) {
+				my @parsed_parts = map {
+					ref $_ eq 'HASH' && exists $_->{expr}
+						? { expr => $self->_parse_embedded_expression( $_->{expr}, $t ) }
+						: $_
+				} @{$parts};
+				return Zuzu::AST::Expr::Regexp->new(
+					file => $t->file,
+					line => $t->line,
+					parts => \@parsed_parts,
+					flags => $spec->{flags} // '',
+				);
+			}
 
-		return Zuzu::AST::Expr::Literal->new(
-			file => $t->file,
+			return Zuzu::AST::Expr::Literal->new(
+				file => $t->file,
 			line => $t->line,
 			value => Zuzu::Value::Regexp->new(
 				pattern => $spec->{pattern} // '',
@@ -2613,7 +2628,9 @@ sub parse_primary {
 sub _parse_template_expression {
 	my ( $self, $tok ) = @_;
 
-	my @parts = $self->_split_template_parts( $tok->value // '', $tok );
+	my @parts = ref( $tok->value ) eq 'ARRAY'
+		? @{ $tok->value }
+		: $self->_split_template_parts( $tok->value // '', $tok );
 	my $expr;
 
 	for my $part ( @parts ) {
@@ -2622,10 +2639,13 @@ sub _parse_template_expression {
 			$piece = $self->_parse_embedded_expression( $part->{expr}, $tok );
 		}
 		else {
+			my $text = ref $part eq 'HASH' && exists $part->{text}
+				? $part->{text}
+				: $part;
 			$piece = Zuzu::AST::Expr::Literal->new(
 				file => $tok->file,
 				line => $tok->line,
-				value => $part,
+				value => $text,
 			);
 		}
 		if ( ! defined $expr ) {

@@ -1,0 +1,18 @@
+from std/string import trim;
+let data := {
+	lang: "en",
+	title: "Hello World",
+	content: "Zia says hello.",
+};
+let webpage := ```
+<html lang="${data{lang}}">
+  <head>
+    <title>${data{title}}</title>
+  </head>
+  <body>
+    <p>${data{content}}</p>
+  </body>
+</html>
+``` |> trim(^^);
+
+say webpage;
