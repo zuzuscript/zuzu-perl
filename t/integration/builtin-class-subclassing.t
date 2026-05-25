@@ -28,6 +28,26 @@ catch ( Exception e ) {
 }
 SRC
 
+is eval_src(<<'SRC'), 'boom|Exception: boom|yes', 'Exception exposes raw message method';
+try {
+	throw new Exception( message: "boom" );
+}
+catch ( Exception e ) {
+	let can_message := "no";
+	if ( e can message ) {
+		can_message := "yes";
+	}
+	e.message() _ "|" _ e.to_String() _ "|" _ can_message;
+}
+SRC
+
+like dies {
+	eval_src(<<'SRC');
+let e := new Exception( message: "boom" );
+e.file();
+SRC
+}, qr/Unknown method 'file'/, 'Exception data slots are not zero-arg member-call fallbacks';
+
 is eval_src(<<'SRC'), 1, 'builtin smoke: collection subclasses preserve custom methods';
 class SpecialBag extends Bag {
 	method is_special () {

@@ -905,6 +905,20 @@ sub _install_builtin_classes {
 	$classes{Exception}->methods->{to_String}{_owner_class} = $classes{Exception};
 	$classes{Exception}->methods->{to_String}{_method_name} = 'to_String';
 	$classes{Exception}->methods->{to_String}{_method_kind} = 'instance';
+	$classes{Exception}->methods->{message} = Zuzu::Value::Function->new(
+		name => 'message',
+		params => [],
+		vararg => undef,
+		body => undef,
+		closure_env => undef,
+	);
+	$classes{Exception}->methods->{message}{_native} = sub {
+		my ( $self_obj ) = @_;
+		return $self_obj->slots->{message};
+	};
+	$classes{Exception}->methods->{message}{_owner_class} = $classes{Exception};
+	$classes{Exception}->methods->{message}{_method_name} = 'message';
+	$classes{Exception}->methods->{message}{_method_kind} = 'instance';
 
 	$classes{Array}->native_constructor( sub {
 		my ( $runtime, $klass, $positional, $named ) = @_;
