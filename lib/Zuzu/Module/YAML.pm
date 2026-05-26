@@ -8,6 +8,7 @@ use JSON::PP ();
 use Scalar::Util qw( blessed );
 use YAML::PP ();
 use Zuzu::Error;
+use Zuzu::Value::BinaryString;
 use Zuzu::Util::NativeHelpers qw(
 	native_class
 	native_function
@@ -16,6 +17,32 @@ use Zuzu::Util::NativeHelpers qw(
 	zuzu_bool
 	zuzu_to_perl
 );
+
+sub _assert_binary_string {
+	my ( $value, $label ) = @_;
+
+	return $value
+		if blessed($value) and $value->isa('Zuzu::Value::BinaryString');
+
+	my $type = !defined($value) ? 'Null' : ref($value) ? ref($value) : 'String';
+	die Zuzu::Error->new_runtime(
+		message => "TypeException: $label expects BinaryString, got $type",
+		file => '<std/data/yaml>',
+		line => 0,
+	);
+}
+
+sub _decode_yaml_to_zuzu {
+	my ( $self, $yaml ) = @_;
+
+	my $perl = $self->slots->{_yaml}->load_string($yaml);
+	return perl_to_zuzu(
+		$perl,
+		is_boolean => sub {
+			return JSON::PP::is_bool( $_[0] ) ? 1 : 0;
+		},
+	);
+}
 
 sub IMPORT {
 	my ( $class, $runtime ) = @_;
@@ -79,19 +106,35 @@ sub IMPORT {
 		},
 	);
 
+	$yaml_class->methods->{encode_binarystring} = native_function(
+		name => 'encode_binarystring',
+		native => sub {
+			my ( $self, @args ) = @_;
+			return Zuzu::Value::BinaryString->from_utf8_string(
+				$yaml_class->methods->{encode}->{_native}->( $self, @args )
+			);
+		},
+	);
+
 	$yaml_class->methods->{decode} = native_function(
 		name => 'decode',
 		native => sub {
 			my ( $self, @args ) = @_;
 			my $yaml = @args ? $args[0] : '';
 			$yaml = defined($yaml) ? "$yaml" : '';
-			my $perl = $self->slots->{_yaml}->load_string( $yaml );
-			return perl_to_zuzu(
-				$perl,
-				is_boolean => sub {
-					return JSON::PP::is_bool( $_[0] ) ? 1 : 0;
-				},
+			return _decode_yaml_to_zuzu( $self, $yaml );
+		},
+	);
+
+	$yaml_class->methods->{decode_binarystring} = native_function(
+		name => 'decode_binarystring',
+		native => sub {
+			my ( $self, @args ) = @_;
+			my $raw = _assert_binary_string(
+				@args ? $args[0] : undef,
+				'YAML.decode_binarystring',
 			);
+			return _decode_yaml_to_zuzu( $self, $raw->to_utf8_string );
 		},
 	);
 
@@ -101,13 +144,12 @@ sub IMPORT {
 			my ( $self, $path_obj ) = @_;
 			$runtime->assert_capability( 'fs', "YAML.load is denied by runtime policy" );
 			my $path_tiny = _path_tiny_from_object( $path_obj, 'YAML.load' );
-			my $yaml = $path_tiny->slurp_utf8;
-			my $perl = $self->slots->{_yaml}->load_string( $yaml );
-			return perl_to_zuzu(
-				$perl,
-				is_boolean => sub {
-					return JSON::PP::is_bool( $_[0] ) ? 1 : 0;
-				},
+			my $raw = Zuzu::Value::BinaryString->new(
+				bytes => $path_tiny->slurp_raw,
+			);
+			return $yaml_class->methods->{decode_binarystring}->{_native}->(
+				$self,
+				$raw,
 			);
 		},
 	);
@@ -130,7 +172,9 @@ sub IMPORT {
 			if ( not $self->slots->{_pretty} ) {
 				$yaml =~ s/\n\z//;
 			}
-			$path_tiny->spew_utf8( $yaml );
+			$path_tiny->spew_raw(
+				Zuzu::Value::BinaryString->from_utf8_string($yaml)->bytes
+			);
 			return $path_obj;
 		},
 	);

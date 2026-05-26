@@ -121,6 +121,17 @@ sub IMPORT {
 		},
 	);
 
+	my $to_Regexp_with_flags = native_function(
+		name => 'to_Regexp_with_flags',
+		native => sub {
+			my ( $value, $flags ) = @_;
+			my $file = $runtime->{_native_call_file} // '<std/internals>';
+			my $line = $runtime->{_native_call_line} // 0;
+
+			return $runtime->_to_RegexpValue_with_flags( $value, $flags, $file, $line );
+		},
+	);
+
 	my $make_instance = native_function(
 		name => 'make_instance',
 		native => sub {
@@ -235,6 +246,7 @@ sub IMPORT {
 		to_Number => $to_Number,
 		to_Boolean => $to_Boolean,
 		to_Regexp => $to_Regexp,
+		to_Regexp_with_flags => $to_Regexp_with_flags,
 		make_instance => $make_instance,
 		load_module => $load_module,
 		setprop => $setprop,

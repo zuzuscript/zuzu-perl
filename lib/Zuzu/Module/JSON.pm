@@ -7,6 +7,7 @@ our $VERSION = '0.001';
 
 use Scalar::Util qw( blessed );
 use Zuzu::Error;
+use Zuzu::Value::BinaryString;
 use Zuzu::Util::NativeHelpers qw(
 	native_class
 	native_function
@@ -15,6 +16,53 @@ use Zuzu::Util::NativeHelpers qw(
 	zuzu_bool
 	zuzu_to_perl
 );
+
+sub _assert_binary_string {
+	my ( $value, $label ) = @_;
+
+	return $value
+		if blessed($value) and $value->isa('Zuzu::Value::BinaryString');
+
+	my $type = blessed($value) && $value->can('type_name')
+		? $value->type_name
+		: !defined($value) ? 'Null' : ref($value) ? ref($value) : 'String';
+	die Zuzu::Error->new_runtime(
+		message => "TypeException: $label expects BinaryString, got $type",
+		file => '<std/data/json>',
+		line => 0,
+	);
+}
+
+sub _escape_non_ascii_for_json_backend {
+	my ( $text ) = @_;
+
+	$text =~ s{([^\x00-\x7F])}{
+		my $cp = ord($1);
+		if ( $cp <= 0xFFFF ) {
+			sprintf '\\u%04X', $cp;
+		}
+		else {
+			$cp -= 0x10000;
+			sprintf '\\u%04X\\u%04X',
+				0xD800 + ( $cp >> 10 ),
+				0xDC00 + ( $cp & 0x3FF );
+		}
+	}gex;
+
+	return $text;
+}
+
+sub _decode_json_to_zuzu {
+	my ( $self, $json ) = @_;
+
+	my $perl = $self->slots->{_encoder}->decode($json);
+	return perl_to_zuzu(
+		$perl,
+		is_boolean => sub {
+			blessed( $_[0] ) and $_[0]->DOES('JSON::PP::Boolean');
+		},
+	);
+}
 
 {
 	package Zuzu::Module::JSON::Codec;
@@ -158,22 +206,41 @@ sub IMPORT {
 	);
 	$json_class->methods->{encode} = $encode;
 
+	$json_class->methods->{encode_binarystring} = native_function(
+		name => 'encode_binarystring',
+		native => sub {
+			my ( $self, @args ) = @_;
+			return Zuzu::Value::BinaryString->from_utf8_string(
+				$encode->{_native}->( $self, @args )
+			);
+		},
+	);
+
 	my $decode = native_function(
 		name => 'decode',
 		native => sub {
 			my ( $self, @args ) = @_;
 			my $json = @args ? $args[0] : '';
 			$json = defined($json) ? "$json" : '';
-			my $perl = $self->slots->{_encoder}->decode( $json );
-			return perl_to_zuzu(
-				$perl,
-				is_boolean => sub {
-					blessed( $_[0] ) and $_[0]->DOES('JSON::PP::Boolean');
-				},
-			);
+			return _decode_json_to_zuzu( $self, $json );
 		},
 	);
 	$json_class->methods->{decode} = $decode;
+
+	$json_class->methods->{decode_binarystring} = native_function(
+		name => 'decode_binarystring',
+		native => sub {
+			my ( $self, @args ) = @_;
+			my $raw = _assert_binary_string(
+				@args ? $args[0] : undef,
+				'JSON.decode_binarystring',
+			);
+			my $json = _escape_non_ascii_for_json_backend(
+				$raw->to_utf8_string
+			);
+			return _decode_json_to_zuzu( $self, $json );
+		},
+	);
 
 	$json_class->methods->{load} = native_function(
 		name => 'load',
@@ -181,13 +248,12 @@ sub IMPORT {
 			my ( $self, $path_obj ) = @_;
 			$runtime->assert_capability( 'fs', "JSON.load is denied by runtime policy" );
 			my $path_tiny = _path_tiny_from_object( $path_obj, 'JSON.load' );
-			my $json = $path_tiny->slurp_utf8;
-			my $perl = $self->slots->{_encoder}->decode( $json );
-			return perl_to_zuzu(
-				$perl,
-				is_boolean => sub {
-					blessed( $_[0] ) and $_[0]->DOES('JSON::PP::Boolean');
-				},
+			my $raw = Zuzu::Value::BinaryString->new(
+				bytes => $path_tiny->slurp_raw,
+			);
+			return $json_class->methods->{decode_binarystring}->{_native}->(
+				$self,
+				$raw,
 			);
 		},
 	);
@@ -206,7 +272,9 @@ sub IMPORT {
 				},
 			);
 			my $json = $self->slots->{_encoder}->encode( $perl );
-			$path_tiny->spew_utf8( $json );
+			$path_tiny->spew_raw(
+				Zuzu::Value::BinaryString->from_utf8_string($json)->bytes
+			);
 			return $path_obj;
 		},
 	);

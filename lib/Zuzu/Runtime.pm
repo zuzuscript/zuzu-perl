@@ -4181,6 +4181,24 @@ sub _to_RegexpValue {
 	return Zuzu::Value::Regexp->new( pattern => $pattern, flags => '' );
 }
 
+sub _to_RegexpValue_with_flags {
+	my ( $self, $value, $flags, $file, $line ) = @_;
+
+	my $pattern = $self->_to_OperatorString( $value, $file, $line );
+	$flags = $self->_to_OperatorString( $flags, $file, $line );
+	my $mods = $self->_regexp_flags_to_modifiers($flags);
+	$self->_compile_regexp_pattern(
+		$pattern,
+		$mods,
+		'plain',
+		'Invalid regexp value',
+		$file,
+		$line,
+	);
+
+	return Zuzu::Value::Regexp->new( pattern => $pattern, flags => $flags );
+}
+
 sub _regexp_is_global {
 	my ( $self, $value ) = @_;
 

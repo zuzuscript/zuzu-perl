@@ -5,9 +5,11 @@ use utf8;
 
 our $VERSION = '0.001';
 
+use Encode ();
 use Scalar::Util qw( blessed );
 use Text::CSV_XS ();
 use Zuzu::Error;
+use Zuzu::Value::BinaryString;
 use Zuzu::Util::NativeHelpers qw(
 	native_class
 	native_function
@@ -226,6 +228,37 @@ sub _encoding_name {
 	return 'UTF-8' if !exists $config->{encoding};
 	return undef if !defined $config->{encoding};
 	return "$config->{encoding}";
+}
+
+sub _assert_binary_string {
+	my ( $value, $label ) = @_;
+
+	return $value
+		if blessed($value) and $value->isa('Zuzu::Value::BinaryString');
+
+	my $type = !defined($value) ? 'Null' : ref($value) ? ref($value) : 'String';
+	die Zuzu::Error->new_runtime(
+		message => "TypeException: $label expects BinaryString, got $type",
+		file => '<std/data/csv>',
+		line => 0,
+	);
+}
+
+sub _text_from_bytes {
+	my ( $bytes, $config ) = @_;
+
+	my $encoding = _encoding_name($config);
+	return $bytes if !defined $encoding;
+	return Encode::decode( $encoding, $bytes, Encode::FB_CROAK );
+}
+
+sub _bytes_from_text {
+	my ( $text, $config ) = @_;
+
+	$text = '' if !defined $text;
+	my $encoding = _encoding_name($config);
+	return "$text" if !defined $encoding;
+	return Encode::encode( $encoding, "$text", Encode::FB_CROAK );
 }
 
 sub _new_csv_backend {
@@ -1179,12 +1212,27 @@ sub IMPORT {
 				and exists $source->slots->{_path_tiny}
 			) {
 				$runtime->assert_capability( 'fs', "CSV.sniff is denied by runtime policy" );
-				$text = $source->slots->{_path_tiny}->slurp_utf8;
+				$text = _text_from_bytes(
+					$source->slots->{_path_tiny}->slurp_raw,
+					$config,
+				);
 			}
 			else {
 				$text = defined $source ? "$source" : '';
 			}
 			return perl_to_zuzu( _sniff_text( $text, $config ) );
+		},
+	);
+
+	$csv_class->methods->{sniff_binarystring} = native_function(
+		name => 'sniff_binarystring',
+		native => sub {
+			my ( $self, $source ) = @_;
+			my $config = _normalize_runtime_config( $self->slots->{_config} // {} );
+			$source = _assert_binary_string( $source, 'CSV.sniff_binarystring' );
+			return perl_to_zuzu(
+				_sniff_text( _text_from_bytes( $source->bytes, $config ), $config )
+			);
 		},
 	);
 
@@ -1271,6 +1319,19 @@ sub IMPORT {
 		},
 	);
 
+	$csv_class->methods->{decode_binarystring} = native_function(
+		name => 'decode_binarystring',
+		native => sub {
+			my ( $self, $raw ) = @_;
+			my $config = _normalize_runtime_config(
+				_config_merge( $self->slots->{_config} )
+			);
+			$raw = _assert_binary_string( $raw, 'CSV.decode_binarystring' );
+			my $text = _text_from_bytes( $raw->bytes, $config );
+			return $csv_class->methods->{decode}->{_native}->( $self, $text );
+		},
+	);
+
 	$csv_class->methods->{decode_report} = native_function(
 		name => 'decode_report',
 		native => sub {
@@ -1335,6 +1396,30 @@ sub IMPORT {
 		},
 	);
 
+	$csv_class->methods->{decode_report_binarystring} = native_function(
+		name => 'decode_report_binarystring',
+		native => sub {
+			my ( $self, $raw ) = @_;
+			my $config = _normalize_runtime_config(
+				_config_merge( $self->slots->{_config}, { on_error => 'collect' } )
+			);
+			$raw = _assert_binary_string(
+				$raw,
+				'CSV.decode_report_binarystring',
+			);
+			my $text = _text_from_bytes( $raw->bytes, $config );
+			my $temp = native_object(
+				class => $self->class,
+				slots => { _config => $config },
+				const => { _config => 1 },
+			);
+			return $csv_class->methods->{decode_report}->{_native}->(
+				$temp,
+				$text,
+			);
+		},
+	);
+
 	$csv_class->methods->{encode} = native_function(
 		name => 'encode',
 		native => sub {
@@ -1347,6 +1432,23 @@ sub IMPORT {
 			_write_rows( $runtime, $csv, $fh, $perl_rows, $config );
 			close $fh;
 			return $$out_ref;
+		},
+	);
+
+	$csv_class->methods->{encode_binarystring} = native_function(
+		name => 'encode_binarystring',
+		native => sub {
+			my ( $self, @args ) = @_;
+			my $config = _normalize_runtime_config(
+				_config_merge( $self->slots->{_config} )
+			);
+			my $text = $csv_class->methods->{encode}->{_native}->(
+				$self,
+				@args,
+			);
+			return Zuzu::Value::BinaryString->new(
+				bytes => _bytes_from_text( $text, $config ),
+			);
 		},
 	);
 
@@ -1372,15 +1474,36 @@ sub IMPORT {
 		},
 	);
 
+	$csv_class->methods->{encode_row_binarystring} = native_function(
+		name => 'encode_row_binarystring',
+		native => sub {
+			my ( $self, @args ) = @_;
+			my $config = _normalize_runtime_config(
+				_config_merge( $self->slots->{_config}, { headers => 0 } )
+			);
+			my $text = $csv_class->methods->{encode_row}->{_native}->(
+				$self,
+				@args,
+			);
+			return Zuzu::Value::BinaryString->new(
+				bytes => _bytes_from_text( $text, $config ),
+			);
+		},
+	);
+
 	$csv_class->methods->{load} = native_function(
 		name => 'load',
 		native => sub {
 			my ( $self, $path_obj ) = @_;
 			$runtime->assert_capability( 'fs', "CSV.load is denied by runtime policy" );
 			my $path_tiny = _path_tiny_from_object( $path_obj, 'CSV.load' );
-			my $config = _normalize_runtime_config( _config_merge( $self->slots->{_config} ) );
-			my $source = $path_tiny->slurp_utf8;
-			return $csv_class->methods->{decode}->{_native}->( $self, $source );
+			my $source = Zuzu::Value::BinaryString->new(
+				bytes => $path_tiny->slurp_raw,
+			);
+			return $csv_class->methods->{decode_binarystring}->{_native}->(
+				$self,
+				$source,
+			);
 		},
 	);
 
@@ -1393,13 +1516,18 @@ sub IMPORT {
 			my $config = _normalize_runtime_config(
 				_config_merge( $self->slots->{_config}, { on_error => 'collect' } )
 			);
-			my $source = $path_tiny->slurp_utf8;
+			my $source = Zuzu::Value::BinaryString->new(
+				bytes => $path_tiny->slurp_raw,
+			);
 			my $temp = native_object(
 				class => $self->class,
 				slots => { _config => $config },
 				const => { _config => 1 },
 			);
-			return $csv_class->methods->{decode_report}->{_native}->( $temp, $source );
+			return $csv_class->methods->{decode_report_binarystring}->{_native}->(
+				$temp,
+				$source,
+			);
 		},
 	);
 
