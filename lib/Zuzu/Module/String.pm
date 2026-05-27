@@ -137,6 +137,15 @@ sub _pattern_to_regexp {
 	);
 }
 
+sub _quotemeta {
+	my ( $text ) = @_;
+
+	my $value = _str( $text, '', 'quotemeta()' );
+	$value =~ s{([\\/\^\$\.\|\?\*\+\(\)\[\]\{\}"'])}{\\$1}g;
+
+	return $value;
+}
+
 sub _split_text {
 	my ( $text, $separator, $limit ) = @_;
 
@@ -446,6 +455,19 @@ sub IMPORT {
 		},
 	);
 
+	my $quotemeta_fn = native_function(
+		name => 'quotemeta',
+		native => sub {
+			my ( @args ) = @_;
+			die Zuzu::Error->new_runtime(
+				message => 'quotemeta() expects one argument',
+				file => '<std/string>',
+				line => 0,
+			) if scalar @args != 1;
+			return _quotemeta( $args[0] );
+		},
+	);
+
 	my $sprint_fn = native_function(
 		name => 'sprint',
 		native => sub {
@@ -557,6 +579,7 @@ sub IMPORT {
 		search => $search_fn,
 		matches => $matches_fn,
 		pattern_to_regexp => $pattern_to_regexp_fn,
+		quotemeta => $quotemeta_fn,
 		sprint => $sprint_fn,
 		split => $split_fn,
 		join => $join_fn,
