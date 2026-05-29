@@ -1,5 +1,8 @@
 use Test2::V0;
 
+plan skip_all => 'set AUTHOR_TESTING=1 to run zuzuzoo hardening tests'
+	if !$ENV{AUTHOR_TESTING};
+
 use Config;
 use File::Basename qw( dirname );
 use File::Path qw( make_path );

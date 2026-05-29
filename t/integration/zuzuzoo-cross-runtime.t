@@ -1,5 +1,8 @@
 use Test2::V0;
 
+plan skip_all => 'set AUTHOR_TESTING=1 to run zuzuzoo cross-runtime tests'
+	if !$ENV{AUTHOR_TESTING};
+
 use Config;
 use File::Spec;
 use File::Temp qw( tempfile tempdir );

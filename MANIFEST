@@ -2254,7 +2254,6 @@ t/integration/binary-string-phase7.t
 t/integration/builtin-class-subclassing.t
 t/integration/class-object-methods.t
 t/integration/cli-zuzu-dispatcher.t
-t/integration/cli-zuzu-guide-html.t
 t/integration/cli-zuzu.t
 t/integration/cli-zuzudoc.t
 t/integration/cli-zuzuzoo.t
