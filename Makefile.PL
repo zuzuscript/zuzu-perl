@@ -3,9 +3,8 @@ use strict;
 use warnings;
 
 use ExtUtils::MakeMaker;
-use File::ShareDir::Install;
-
-install_share dist => 'stdlib/modules';
+use File::Find qw( find );
+use File::Spec;
 
 my @exe_files = (
 	_script_files( 'bin', skip => { 'zuzu' => 1 } ),
@@ -20,6 +19,10 @@ WriteMakefile(
 	LICENSE => 'perl',
 	MIN_PERL_VERSION => '5.014',
 	EXE_FILES => \@exe_files,
+	PM => {
+		_perl_module_files(),
+		_zuzu_stdlib_module_files(),
+	},
 	PREREQ_PM => {
 		'Archive::Zip' => 0,
 		'CBOR::Free' => 0,
@@ -57,7 +60,6 @@ WriteMakefile(
 	},
 	CONFIGURE_REQUIRES => {
 		'ExtUtils::MakeMaker' => 0,
-		'File::ShareDir::Install' => 0,
 	},
 	TEST_REQUIRES => {
 		'HTTP::Request::Common' => 0,
@@ -82,6 +84,44 @@ WriteMakefile(
 		},
 	},
 );
+
+sub _perl_module_files {
+	my %files;
+	find(
+		{
+			wanted => sub {
+				return if !-f $_ or $_ !~ /\.pm\z/;
+				my $source = $File::Find::name;
+				my $relative = File::Spec->abs2rel( $source, 'lib' );
+				$files{$source} = File::Spec->catfile( '$(INST_LIB)', $relative );
+			},
+			no_chdir => 1,
+		},
+		'lib',
+	);
+	return map { $_ => $files{$_} } sort keys %files;
+}
+
+sub _zuzu_stdlib_module_files {
+	my %files;
+	find(
+		{
+			wanted => sub {
+				return if !-f $_ or $_ !~ /\.zzm\z/;
+				my $source = $File::Find::name;
+				my $relative = File::Spec->abs2rel( $source, 'stdlib/modules' );
+				$files{$source} = File::Spec->catfile(
+					'$(INST_LIB)',
+					qw( auto share dist $(DISTNAME) modules ),
+					$relative,
+				);
+			},
+			no_chdir => 1,
+		},
+		'stdlib/modules',
+	);
+	return map { $_ => $files{$_} } sort keys %files;
+}
 
 sub _script_files {
 	my ( $dir, %options ) = @_;
