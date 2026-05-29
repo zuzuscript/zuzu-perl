@@ -281,4 +281,12 @@ C<dec2bin>, C<oct2hex>, C<oct2dec>, C<oct2bin>, C<bin2hex>, C<bin2dec>,
 and C<bin2oct>. Hexadecimal parsing accepts an optional C<0x> or C<0X>
 prefix.
 
+=head1 COPYRIGHT AND LICENCE
+
+B<< Zuzu::Module::Math >> is copyright Toby Inkster.
+
+It is free software; you may redistribute it and/or modify it under
+the terms of either the Artistic License 1.0 or the GNU General Public
+License version 2.
+
 =cut

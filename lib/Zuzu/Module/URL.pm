@@ -143,4 +143,12 @@ Zuzu::Module::URL - std/net/url bindings for ZuzuScript.
 Implements the C<std/net/url> module and exports four functions:
 C<escape>, C<unescape>, C<parse>, and C<fill_template>.
 
+=head1 COPYRIGHT AND LICENCE
+
+B<< Zuzu::Module::URL >> is copyright Toby Inkster.
+
+It is free software; you may redistribute it and/or modify it under
+the terms of either the Artistic License 1.0 or the GNU General Public
+License version 2.
+
 =cut

@@ -44,6 +44,14 @@ The expression that provides the last value in the range.
 
 Dispatches this AST node to C<Zuzu::Runtime::eval_range>.
 
+=head1 COPYRIGHT AND LICENCE
+
+B<< Zuzu::AST::Expr::Range >> is copyright Toby Inkster.
+
+It is free software; you may redistribute it and/or modify it under
+the terms of either the Artistic License 1.0 or the GNU General Public
+License version 2.
+
 =cut
 
 1;

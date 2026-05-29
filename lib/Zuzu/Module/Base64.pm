@@ -145,4 +145,12 @@ Zuzu::Module::Base64 - std/string/base64 bindings.
 Implements C<std/string/base64> and exports C<encode>,
 C<decode>, C<encode_urlsafe>, and C<decode_urlsafe>.
 
+=head1 COPYRIGHT AND LICENCE
+
+B<< Zuzu::Module::Base64 >> is copyright Toby Inkster.
+
+It is free software; you may redistribute it and/or modify it under
+the terms of either the Artistic License 1.0 or the GNU General Public
+License version 2.
+
 =cut

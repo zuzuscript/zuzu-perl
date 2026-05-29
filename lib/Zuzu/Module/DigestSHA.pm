@@ -235,4 +235,12 @@ C<hmac_sha256_hex>, C<hmac_sha256_b64>, C<hmac_sha384>,
 C<hmac_sha384_hex>, C<hmac_sha384_b64>, C<hmac_sha512>,
 C<hmac_sha512_hex>, and C<hmac_sha512_b64>.
 
+=head1 COPYRIGHT AND LICENCE
+
+B<< Zuzu::Module::DigestSHA >> is copyright Toby Inkster.
+
+It is free software; you may redistribute it and/or modify it under
+the terms of either the Artistic License 1.0 or the GNU General Public
+License version 2.
+
 =cut

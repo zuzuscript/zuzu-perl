@@ -123,6 +123,14 @@ opt-in; aliases are preserved by default.
 
 Parses CLI options, formats the target file, and returns a process exit code.
 
+=head1 COPYRIGHT AND LICENCE
+
+B<< Zuzu::Tidy::CLI >> is copyright Toby Inkster.
+
+It is free software; you may redistribute it and/or modify it under
+the terms of either the Artistic License 1.0 or the GNU General Public
+License version 2.
+
 =cut
 
 1;

@@ -968,4 +968,12 @@ Methods include C<build_request(method, url)>, C<send(request)>,
 C<request(method, url, data?, headers?)>, plus shorthand methods
 C<get>, C<head>, C<delete>, C<post>, C<put>, C<patch>, and C<options>.
 
+=head1 COPYRIGHT AND LICENCE
+
+B<< Zuzu::Module::HTTP >> is copyright Toby Inkster.
+
+It is free software; you may redistribute it and/or modify it under
+the terms of either the Artistic License 1.0 or the GNU General Public
+License version 2.
+
 =cut

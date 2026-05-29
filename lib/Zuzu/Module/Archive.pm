@@ -687,4 +687,12 @@ Encodes an archive dict and writes it to a C<std/io> C<Path>.
 Perl currently supports C<zip>, C<tar>, C<tar.gz>, C<tar.bz2>,
 C<gz>, and C<bz2>.
 
+=head1 COPYRIGHT AND LICENCE
+
+B<< Zuzu::Module::Archive >> is copyright Toby Inkster.
+
+It is free software; you may redistribute it and/or modify it under
+the terms of either the Artistic License 1.0 or the GNU General Public
+License version 2.
+
 =cut

@@ -113,4 +113,12 @@ Zuzu::Module::DigestMD5 - std/digest/md5 bindings.
 Implements C<std/digest/md5> and exports C<md5>,
 C<md5_hex>, and C<md5_b64>.
 
+=head1 COPYRIGHT AND LICENCE
+
+B<< Zuzu::Module::DigestMD5 >> is copyright Toby Inkster.
+
+It is free software; you may redistribute it and/or modify it under
+the terms of either the Artistic License 1.0 or the GNU General Public
+License version 2.
+
 =cut

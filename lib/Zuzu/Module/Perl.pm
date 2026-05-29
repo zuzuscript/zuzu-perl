@@ -196,4 +196,12 @@ in scalar context.
 
 =back
 
+=head1 COPYRIGHT AND LICENCE
+
+B<< Zuzu::Module::Perl >> is copyright Toby Inkster.
+
+It is free software; you may redistribute it and/or modify it under
+the terms of either the Artistic License 1.0 or the GNU General Public
+License version 2.
+
 =cut

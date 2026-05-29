@@ -378,6 +378,14 @@ Removes all members from the bag.
 
 Returns this runtime value's truthiness in ZuzuScript.
 
+=head1 COPYRIGHT AND LICENCE
+
+B<< Zuzu::Value::Bag >> is copyright Toby Inkster.
+
+It is free software; you may redistribute it and/or modify it under
+the terms of either the Artistic License 1.0 or the GNU General Public
+License version 2.
+
 =cut
 
 1;

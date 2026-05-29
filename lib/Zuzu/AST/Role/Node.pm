@@ -62,6 +62,14 @@ C<Zuzu::AST::Expr::DictGet>,
 C<Zuzu::AST::Expr::Array>,
 C<Zuzu::AST::Expr::Dict>.
 
+=head1 COPYRIGHT AND LICENCE
+
+B<< Zuzu::AST::Role::Node >> is copyright Toby Inkster.
+
+It is free software; you may redistribute it and/or modify it under
+the terms of either the Artistic License 1.0 or the GNU General Public
+License version 2.
+
 =cut
 
 1;

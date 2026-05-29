@@ -3646,4 +3646,12 @@ Implements the early runtime-backed GUI object, event, and baseline
 control model for the Perl runtime, with a Prima backend for on-screen
 windows and controls.
 
+=head1 COPYRIGHT AND LICENCE
+
+B<< Zuzu::Module::GUI::Objects >> is copyright Toby Inkster.
+
+It is free software; you may redistribute it and/or modify it under
+the terms of either the Artistic License 1.0 or the GNU General Public
+License version 2.
+
 =cut

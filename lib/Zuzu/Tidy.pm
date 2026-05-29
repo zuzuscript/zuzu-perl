@@ -1366,6 +1366,14 @@ C<▷>. This option is disabled by default.
 
 L<Zuzu::Lexer>, L<Zuzu::Parser>, L<Zuzu::Tidy::CLI>.
 
+=head1 COPYRIGHT AND LICENCE
+
+B<< Zuzu::Tidy >> is copyright Toby Inkster.
+
+It is free software; you may redistribute it and/or modify it under
+the terms of either the Artistic License 1.0 or the GNU General Public
+License version 2.
+
 =cut
 
 1;

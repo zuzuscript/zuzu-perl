@@ -123,4 +123,12 @@ reference in that slot.
 Reads a storage scalar. A dead Perl weak reference naturally reads as
 C<undef>, matching the core weak-storage representation.
 
+=head1 COPYRIGHT AND LICENCE
+
+B<< Zuzu::Weak >> is copyright Toby Inkster.
+
+It is free software; you may redistribute it and/or modify it under
+the terms of either the Artistic License 1.0 or the GNU General Public
+License version 2.
+
 =cut

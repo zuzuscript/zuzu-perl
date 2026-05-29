@@ -87,4 +87,12 @@ result of evaluation.
 Loads a UTF-8 script file, parses and evaluates it, and returns
 the result of evaluation.
 
+=head1 COPYRIGHT AND LICENCE
+
+B<< Zuzu >> is copyright Toby Inkster.
+
+It is free software; you may redistribute it and/or modify it under
+the terms of either the Artistic License 1.0 or the GNU General Public
+License version 2.
+
 =cut

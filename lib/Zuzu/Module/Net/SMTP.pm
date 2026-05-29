@@ -903,4 +903,12 @@ supports safe sendmail-compatible process delivery and basic plaintext
 SMTP relay/submission to a configured host and port. TLS, STARTTLS, and
 authentication are reported as unsupported in this implementation.
 
+=head1 COPYRIGHT AND LICENCE
+
+B<< Zuzu::Module::Net::SMTP >> is copyright Toby Inkster.
+
+It is free software; you may redistribute it and/or modify it under
+the terms of either the Artistic License 1.0 or the GNU General Public
+License version 2.
+
 =cut

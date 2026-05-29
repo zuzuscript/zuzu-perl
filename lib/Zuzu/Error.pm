@@ -153,6 +153,14 @@ Formats the error as a single diagnostic string.
 
 L<Zuzu::Error::Compile>, L<Zuzu::Error::Runtime>.
 
+=head1 COPYRIGHT AND LICENCE
+
+B<< Zuzu::Error >> is copyright Toby Inkster.
+
+It is free software; you may redistribute it and/or modify it under
+the terms of either the Artistic License 1.0 or the GNU General Public
+License version 2.
+
 =cut
 
 1;

@@ -360,4 +360,12 @@ Zuzu::Module::DNS - std/net/dns bindings for ZuzuScript.
 
 Implements the C<std/net/dns> runtime-supported module.
 
+=head1 COPYRIGHT AND LICENCE
+
+B<< Zuzu::Module::DNS >> is copyright Toby Inkster.
+
+It is free software; you may redistribute it and/or modify it under
+the terms of either the Artistic License 1.0 or the GNU General Public
+License version 2.
+
 =cut

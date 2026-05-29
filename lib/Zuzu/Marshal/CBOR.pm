@@ -396,4 +396,12 @@ Zuzu::Marshal::CBOR - narrow CBOR adapter for Zuzu Marshal
 Wraps C<CBOR::Free> behind explicit operations for the CBOR data types
 used by Zuzu Marshal.
 
+=head1 COPYRIGHT AND LICENCE
+
+B<< Zuzu::Marshal::CBOR >> is copyright Toby Inkster.
+
+It is free software; you may redistribute it and/or modify it under
+the terms of either the Artistic License 1.0 or the GNU General Public
+License version 2.
+
 =cut

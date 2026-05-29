@@ -3258,6 +3258,14 @@ Parses a bag literal construct and returns its AST node.
 
 Subclasses: none in this distribution.
 
+=head1 COPYRIGHT AND LICENCE
+
+B<< Zuzu::Parser::_Impl >> is copyright Toby Inkster.
+
+It is free software; you may redistribute it and/or modify it under
+the terms of either the Artistic License 1.0 or the GNU General Public
+License version 2.
+
 =cut
 
 1;

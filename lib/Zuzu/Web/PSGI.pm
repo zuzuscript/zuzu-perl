@@ -457,6 +457,14 @@ Request headers are converted from the standard CGI-style PSGI
 environment variables. PSGI normally does not preserve original header
 order, original spelling, or duplicate request headers.
 
+=head1 COPYRIGHT AND LICENCE
+
+B<< Zuzu::Web::PSGI >> is copyright Toby Inkster.
+
+It is free software; you may redistribute it and/or modify it under
+the terms of either the Artistic License 1.0 or the GNU General Public
+License version 2.
+
 =cut
 
 1;

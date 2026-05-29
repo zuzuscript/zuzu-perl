@@ -86,6 +86,14 @@ Executes C<is_keyword> for this module.
 
 Executes C<boolify> for this module.
 
+=head1 COPYRIGHT AND LICENCE
+
+B<< Zuzu::Util >> is copyright Toby Inkster.
+
+It is free software; you may redistribute it and/or modify it under
+the terms of either the Artistic License 1.0 or the GNU General Public
+License version 2.
+
 =cut
 
 1;
