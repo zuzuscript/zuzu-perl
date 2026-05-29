@@ -4,7 +4,7 @@ use utf8;
 use strict;
 use warnings;
 
-our $VERSION = '0.001';
+our $VERSION = '0.001000';
 
 use Exporter qw( import );
 use Scalar::Util qw( blessed weaken );

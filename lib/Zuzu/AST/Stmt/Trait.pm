@@ -2,7 +2,7 @@ package Zuzu::AST::Stmt::Trait;
 
 use utf8;
 
-our $VERSION = '0.001';
+our $VERSION = '0.001000';
 
 use Moo;
 

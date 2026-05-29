@@ -2,7 +2,7 @@ package Zuzu::AST::Visitor::LexicalEnvHints;
 
 use utf8;
 
-our $VERSION = '0.001';
+our $VERSION = '0.001000';
 
 use Scalar::Util qw( blessed refaddr );
 

@@ -4,6 +4,8 @@ use utf8;
 use strict;
 use warnings;
 
+our $VERSION = '0.001000';
+
 use Scalar::Util qw( blessed );
 use Getopt::Long qw(
 	Configure

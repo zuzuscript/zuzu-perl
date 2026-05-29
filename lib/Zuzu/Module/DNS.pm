@@ -2,7 +2,7 @@ package Zuzu::Module::DNS;
 
 use utf8;
 
-our $VERSION = '0.001';
+our $VERSION = '0.001000';
 our $DEFAULT_TIMEOUT = 5;
 
 use Net::DNS ();

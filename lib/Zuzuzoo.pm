@@ -18,7 +18,7 @@ use TAP::Parser;
 use Zuzu::Parser;
 use Zuzu::Runtime;
 
-our $VERSION = '0.001';
+our $VERSION = '0.001000';
 
 sub new {
 	my ( $class, %args ) = @_;

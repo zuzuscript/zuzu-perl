@@ -2,7 +2,7 @@ package Zuzu::Module::TUI;
 
 use utf8;
 
-our $VERSION = '0.001';
+our $VERSION = '0.001000';
 
 use File::Spec;
 use Scalar::Util qw( blessed );
