@@ -159,7 +159,7 @@ sub extract_lexeme {
 		return ( $rest =~ /\A```(?s:(?:\\.|(?!```).))*```|\A`(?:\\.|[^`\\])*`/u ) ? $& : '';
 	}
 	if ( $type eq 'REGEXP' ) {
-		return ( $rest =~ /\A\/(?:\\.|[^\/\\\n])+\/(?:i|g|ig|gi)?/u ) ? $& : '';
+		return extract_regexp_lexeme($rest);
 	}
 	if ( $type eq 'EMPTY_SET' ) {
 		return '∅';
@@ -167,6 +167,43 @@ sub extract_lexeme {
 	if ( $type eq 'OP' ) {
 		my $op = $tok->value // '';
 		return $op if $op ne '' and index( $rest, $op ) == 0;
+	}
+
+	return '';
+}
+
+sub extract_regexp_lexeme {
+	my ($rest) = @_;
+	return '' if substr( $rest, 0, 1 ) ne '/';
+
+	my $len = length($rest);
+	my $pos = 1;
+	my $escaped = 0;
+	my $in_class = 0;
+
+	while ( $pos < $len ) {
+		my $c = substr( $rest, $pos, 1 );
+		if ( !$escaped and !$in_class and $c eq '/' ) {
+			$pos++;
+			my $flags = '';
+			while ( $pos < $len ) {
+				my $flag = substr( $rest, $pos, 1 );
+				last if $flag ne 'i' and $flag ne 'g';
+				last if index( $flags, $flag ) >= 0;
+				$flags .= $flag;
+				$pos++;
+			}
+
+			return substr( $rest, 0, $pos );
+		}
+		if ( !$escaped and $c eq '[' ) {
+			$in_class = 1;
+		}
+		elsif ( !$escaped and $c eq ']' ) {
+			$in_class = 0;
+		}
+		$escaped = !$escaped && $c eq "\\" ? 1 : 0;
+		$pos++;
 	}
 
 	return '';

@@ -16,6 +16,7 @@ ok -f $highlighter, 'highlighter script exists';
 my $source = <<'ZZS';
 let x := 10 / 2;
 let rx := /ab+c/i;
+let slash_class := /[/]/g;
 let bytes := 'abc';
 let bytes2 := '''ab
 cd''';
@@ -66,6 +67,8 @@ like $html, qr{<span class="operator">/</span>\s*<span class="number">2</span>},
 	'division slash is classified as operator';
 like $html, qr{<span class="regexp">/ab\+c/i</span>},
 	'regexp literal is classified as regexp';
+like $html, qr{<span class="regexp">/\[/\]/g</span>},
+	'regexp literal with slash character class is classified as regexp';
 like $html, qr{<span class="string">'abc'</span>},
 	'binary string literal is classified as string';
 like $html, qr{(?s)<span class="string">'''ab\ncd'''</span>},
