@@ -52,7 +52,7 @@ sub boolify {
 
 	if ( !ref($v) ) {
 		return 0 if equality_type($v) eq 'Number' && 0 + $v == 0;
-		return 0 if equality_type($v) eq 'String' && ( $v eq '' or $v eq '0' );
+		return 0 if equality_type($v) eq 'String' && $v eq '';
 	}
 
 	return 1;

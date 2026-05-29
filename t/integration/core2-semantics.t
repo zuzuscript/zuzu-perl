@@ -33,7 +33,7 @@ SRC
 is eval_src(<<'SRC'), 1, 'truthiness for scalars and composites is stable';
 	( ( null ? 1 : 0 ) = 0 )
 	and ( ( "" ? 1 : 0 ) = 0 )
-	and ( ( "0" ? 1 : 0 ) = 0 )
+	and ( ( "0" ? 1 : 0 ) = 1 )
 	and ( ( 0 ? 1 : 0 ) = 0 )
 	and ( ( [] ? 1 : 0 ) = 0 )
 	and ( ( {} ? 1 : 0 ) = 0 )

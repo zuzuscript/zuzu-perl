@@ -5689,7 +5689,7 @@ sub _to_Boolean {
 	if ( !ref($value) ) {
 		my $type = equality_type($value);
 		return 0 if $type eq 'Number' && 0 + $value == 0;
-		return 0 if $type eq 'String' && ( $value eq '' or $value eq '0' );
+		return 0 if $type eq 'String' && $value eq '';
 		return 1;
 	}
 	if ( blessed($value) ) {
