@@ -2,7 +2,7 @@ package Zuzu::AST::Expr::Slice;
 
 use utf8;
 
-our $VERSION = '0.001001';
+our $VERSION = '0.001002';
 
 use Moo;
 

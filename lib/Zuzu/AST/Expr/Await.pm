@@ -2,7 +2,7 @@ package Zuzu::AST::Expr::Await;
 
 use utf8;
 
-our $VERSION = '0.001001';
+our $VERSION = '0.001002';
 
 use Moo;
 

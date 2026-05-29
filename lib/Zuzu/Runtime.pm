@@ -2,7 +2,7 @@ package Zuzu::Runtime;
 
 use utf8;
 
-our $VERSION = '0.001001';
+our $VERSION = '0.001002';
 our $DEBUG_LEVEL = 0;
 
 use Digest::MD5 qw( md5_hex );
