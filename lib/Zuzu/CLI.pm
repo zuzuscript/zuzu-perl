@@ -4,7 +4,7 @@ use utf8;
 use strict;
 use warnings;
 
-our $VERSION = '0.001000';
+our $VERSION = '0.001001';
 
 use Scalar::Util qw( blessed );
 use Getopt::Long qw(
@@ -288,7 +288,7 @@ sub _print_version {
 		disabled_visitors => $options->{disabled_visitors} // [],
 	);
 
-	print "zuzu version $Zuzu::VERSION\n";
+	print "zuzu.pl version $Zuzu::VERSION\n";
 	if ( $options->{show_version_verbose} ) {
 		print "\n";
 		print "lib search paths:\n";

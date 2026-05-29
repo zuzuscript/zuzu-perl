@@ -68,8 +68,17 @@ WriteMakefile(
 		TESTS => 't/*.t t/integration/*.t',
 	},
 	META_MERGE => {
+		'meta-spec' => { version => 2 },
 		resources => {
-			repository => 'https://example.invalid/zuzu',
+			homepage => 'https://zuzulang.org/',
+			repository => {
+				type => 'git',
+				url  => 'https://github.com/zuzuscript/zuzu-perl',
+				web  => 'https://github.com/zuzuscript/zuzu-perl',
+			},
+			bugtracker => {
+				web => 'https://github.com/zuzuscript/zuzu-perl/issues',
+			},
 		},
 	},
 );

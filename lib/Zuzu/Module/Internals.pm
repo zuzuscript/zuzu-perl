@@ -2,7 +2,7 @@ package Zuzu::Module::Internals;
 
 use utf8;
 
-our $VERSION = '0.001000';
+our $VERSION = '0.001001';
 
 use Scalar::Util qw( blessed refaddr );
 

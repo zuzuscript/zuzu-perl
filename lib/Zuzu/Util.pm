@@ -5,7 +5,7 @@ use strict;
 use utf8;
 use warnings;
 
-our $VERSION = '0.001000';
+our $VERSION = '0.001001';
 
 use Unicode::Normalize qw(NFC);
 use Zuzu::Value::Equality qw(equality_type);
@@ -52,7 +52,7 @@ sub boolify {
 
 	if ( !ref($v) ) {
 		return 0 if equality_type($v) eq 'Number' && 0 + $v == 0;
-		return 0 if equality_type($v) eq 'String' && $v eq '';
+		return 0 if equality_type($v) eq 'String' && ( $v eq '' or $v eq '0' );
 	}
 
 	return 1;
