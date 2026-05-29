@@ -348,6 +348,7 @@ blib/script/zuzu.pl
 blib/script/zuzudoc.pl
 blib/script/zuzuprove
 blib/script/zuzuzoo
+CHANGELOG.md
 cpanfile
 languagetests/basic.zzs
 languagetests/collection/array-methods.zzs
