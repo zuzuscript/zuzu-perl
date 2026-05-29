@@ -1,0 +1,78 @@
+name: Tests
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  perl:
+    name: Perl ${{ matrix.perl-version }}
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        perl-version:
+          - "5.24"
+          - "5.26"
+          - "5.28"
+          - "5.30"
+          - "5.32"
+          - "5.34"
+          - "5.36"
+          - "5.38"
+          - "5.40"
+          - "5.42"
+
+    env:
+      AUTHOR_TESTING: "1"
+      AUTOMATED_TESTING: "1"
+      NONINTERACTIVE_TESTING: "1"
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up Perl
+        uses: shogo82148/actions-setup-perl@v1
+        with:
+          perl-version: ${{ matrix.perl-version }}
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            cpanminus \
+            libffi-dev \
+            libfontconfig1-dev \
+            libfreetype6-dev \
+            libgif-dev \
+            libjpeg-dev \
+            libpng-dev \
+            libssl-dev \
+            libx11-dev \
+            libxext-dev \
+            libxft-dev \
+            libxml2-dev \
+            libxpm-dev \
+            libxrender-dev \
+            zlib1g-dev
+
+      - name: Install Perl dependencies
+        run: cpanm --installdeps -n .
+
+      - name: Skip socket-local database ztests
+        run: |
+          mkdir -p "$RUNNER_TEMP/zuzu-skipped-ztests"
+          mv stdlib/tests/std/db/_mysql.zzs "$RUNNER_TEMP/zuzu-skipped-ztests/_mysql.zzs"
+          mv stdlib/tests/std/db/_postgresql.zzs "$RUNNER_TEMP/zuzu-skipped-ztests/_postgresql.zzs"
+
+      - name: Run tests
+        run: prove -lr t
