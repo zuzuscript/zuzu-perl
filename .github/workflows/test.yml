@@ -44,6 +44,11 @@ jobs:
         with:
           perl-version: ${{ matrix.perl-version }}
 
+      - name: Prefer setup-perl shared libraries
+        run: |
+          perl_root="$(dirname "$(dirname "$(command -v perl)")")"
+          echo "LD_LIBRARY_PATH=$perl_root/lib64:$perl_root/lib:${LD_LIBRARY_PATH:-}" >> "$GITHUB_ENV"
+
       - name: Install system dependencies
         run: |
           sudo apt-get update
