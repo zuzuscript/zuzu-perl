@@ -4,9 +4,8 @@ use utf8;
 
 our $VERSION = '0.001';
 
-use DateTime ();
 use DateTime::Lite ();
-use DateTime::TimeZone ();
+use DateTime::Lite::TimeZone ();
 use POSIX qw( strftime );
 use Time::Local qw( timegm );
 
@@ -71,7 +70,10 @@ sub _zone_name {
 sub _timezone {
 	my ( $value ) = @_;
 	my $name = _zone_name($value);
-	return DateTime::TimeZone->new( name => $name );
+	my $timezone = DateTime::Lite::TimeZone->new( name => $name );
+	_runtime_error( DateTime::Lite::TimeZone->error || "invalid timezone: $name" )
+		if !defined $timezone;
+	return $timezone;
 }
 
 sub _timezone_label {
@@ -218,7 +220,7 @@ sub _zone_from_self { $_[0]->slots->{_timezone} // 'UTC' }
 
 sub _datetime_from_epoch {
 	my ( $epoch, $zone ) = @_;
-	return DateTime->from_epoch(
+	return DateTime::Lite->from_epoch(
 		epoch => $epoch,
 		time_zone => _timezone($zone),
 	);
@@ -253,13 +255,13 @@ sub _same_wall_epoch {
 		my %offsets;
 		for my $probe ( -172800, -86400, -3600, 0, 3600, 86400, 172800 ) {
 			$offsets{ $tz->offset_for_datetime(
-				DateTime->from_epoch( epoch => $naive + $probe, time_zone => 'UTC' )
+				DateTime::Lite->from_epoch( epoch => $naive + $probe, time_zone => 'UTC' )
 			) } = 1;
 		}
 		my @epochs;
 		for my $offset ( keys %offsets ) {
 			my $candidate = $naive - $offset;
-			my $dt = DateTime->from_epoch( epoch => $candidate, time_zone => $tz );
+			my $dt = DateTime::Lite->from_epoch( epoch => $candidate, time_zone => $tz );
 			push @epochs, $candidate
 				if $dt->year == $try{year}
 				and $dt->month == $try{month}
@@ -271,7 +273,7 @@ sub _same_wall_epoch {
 		return ( sort { $a <=> $b } @epochs )[0] + $frac if @epochs;
 	}
 
-	my $dt = DateTime->new( %parts, time_zone => $tz );
+	my $dt = DateTime::Lite->new( %parts, time_zone => $tz );
 	return $dt->epoch + $frac;
 }
 
