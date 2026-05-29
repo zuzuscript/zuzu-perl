@@ -2,3 +2,7 @@
 (?:^|/)AGENTS\.md$
 (?:^|/)\.agents(?:/|$)
 ^docs(?:/|$)
+^Makefile$
+^MYMETA\.(?:json|yml)$
+zuzu-test.sock
+MANIFEST.bak
