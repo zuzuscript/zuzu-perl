@@ -10,7 +10,7 @@ but using Perlish version numbers like `x.yyyzzz` instead of `x.y.z`.
 
 ### Changed
 
-- Updated the `languagetests` submodule.
+- Updated the `docs/userguide` and `languagetests` submodules.
 
 ### Fixed
 
