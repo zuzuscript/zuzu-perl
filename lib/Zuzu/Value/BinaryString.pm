@@ -2,7 +2,7 @@ package Zuzu::Value::BinaryString;
 
 use utf8;
 
-our $VERSION = '0.001004';
+our $VERSION = '0.001005';
 
 use Moo;
 use Encode ();
