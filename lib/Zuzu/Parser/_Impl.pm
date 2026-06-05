@@ -2,7 +2,7 @@ package Zuzu::Parser::_Impl;
 
 use utf8;
 
-our $VERSION = '0.001003';
+our $VERSION = '0.001004';
 
 use Zuzu::AST::Block;
 use Zuzu::AST::Expr::Array;

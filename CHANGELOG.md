@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project roughly adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html),
 but using Perlish version numbers like `x.yyyzzz` instead of `x.y.z`.
 
+## 0.001004 - 2026-06-05
+
+### Changed
+
+- Raised the required versions of Path::Tiny and Sub::Quote.
+- Marked the std/clib integration test as author-only.
+
+### Fixed
+
+- Fixed the marshal golden fixture test to parse on older supported Perl versions.
+
 ## 0.001003 - 2026-05-31
 
 ### Changed

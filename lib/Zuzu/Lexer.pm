@@ -2,7 +2,7 @@ package Zuzu::Lexer;
 
 use utf8;
 
-our $VERSION = '0.001003';
+our $VERSION = '0.001004';
 
 use Zuzu::Token ();
 use Zuzu::Util ();
