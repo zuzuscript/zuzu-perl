@@ -12,6 +12,7 @@ but using Perlish version numbers like `x.yyyzzz` instead of `x.y.z`.
 
 - Raised the required versions of Path::Tiny and Sub::Quote.
 - Marked the std/clib integration test as author-only.
+- Excluded `blib` from distribution manifests.
 
 ### Fixed
 
