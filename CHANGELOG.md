@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project roughly adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html),
 but using Perlish version numbers like `x.yyyzzz` instead of `x.y.z`.
 
+## Unreleased
+
+### Changed
+
+- Updated the `languagetests` submodule with statement-termination and
+  postfix-return conformance coverage.
+
+### Fixed
+
+- Normalized XML module text values so parsed, loaded, serialized, and
+  attribute/text accessor values consistently use decoded text.
+
 ## 0.001005 - 2026-06-05
 
 ### Changed
