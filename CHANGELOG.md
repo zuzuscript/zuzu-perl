@@ -15,6 +15,8 @@ but using Perlish version numbers like `x.yyyzzz` instead of `x.y.z`.
 
 ### Fixed
 
+- Cleaned up native DBI handles during runtime finish to avoid intermittent
+  DBD::SQLite crashes at Perl interpreter teardown.
 - Normalized XML module text values so parsed, loaded, serialized, and
   attribute/text accessor values consistently use decoded text.
 
