@@ -10,6 +10,10 @@ but using Perlish version numbers like `x.yyyzzz` instead of `x.y.z`.
 
 *stdlib tag 20260610, languagetests tag 20260610.*
 
+### Changed
+
+- Bumped version to 0.003000.
+
 ### Fixed
 
 - Fixed class field initializer evaluation so default values are evaluated in the
