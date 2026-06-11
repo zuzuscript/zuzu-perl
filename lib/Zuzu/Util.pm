@@ -33,7 +33,7 @@ sub is_keyword {
 		and or xor nand not
 		eq ne gt ge lt le cmp eqi nei gti gei lti lei cmpi
 		mod abs sqrt floor ceil round int length uc lc typeof instanceof does can
-		union intersection subsetof supersetof equivalentof
+		union intersection subsetof supersetof equivalentof divides
 		from import as
 		try catch throw die do warn say print debug assert
 		new self super fn

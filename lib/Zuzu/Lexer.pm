@@ -581,7 +581,7 @@ sub next_token {
 			'⌊', '⌋', '⌈', '⌉',
 		);
 		# plus unicode aliases you mentioned (not exhaustive)
-		push @ops, qw( × ÷ ≠ ≤ ≥ ≡ ≢ ≶ ≷ ⋀ ⋁ ⊻ ⊼ ¬ ∈ ∉ ⋃ ⋂ ⊂ ⊃ ∖ \ ▷ ◁ );
+		push @ops, qw( × ÷ ≠ ≤ ≥ ≡ ≢ ≶ ≷ ⋀ ⋁ ⊻ ⊼ ¬ ∈ ∉ ⋃ ⋂ ⊂ ⊃ ∖ \ ▷ ◁ ∣ ∤ );
 		# sort by length desc for greedy match
 		@ops = sort { length($b) <=> length($a) } @ops;
 

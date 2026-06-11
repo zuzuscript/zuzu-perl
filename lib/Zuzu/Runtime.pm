@@ -3753,7 +3753,7 @@ sub _eval_binary_op_values {
 	if ($op eq '-' ) { return $self->_to_Number($l) - $self->_to_Number($r); }
 	if ($op eq '*' || $op eq '×') { return $self->_to_Number($l) * $self->_to_Number($r); }
 	if ($op eq '/' || $op eq '÷') { return $self->_to_Number($l) / $self->_to_Number($r); }
-	if ($op eq 'mod') { return $self->_to_Number($l) % $self->_to_Number($r); }
+	if ($op eq 'mod') { return POSIX::fmod( $self->_to_Number($l), $self->_to_Number($r) ); }
 	if ($op eq '**') { return $self->_to_Number($l) ** $self->_to_Number($r); }
 	if ($op eq '&' || $op eq '|' || $op eq '^') {
 		return $self->_bitwise_binary_op( $op, $l, $r, $file, $line );
@@ -3790,6 +3790,13 @@ sub _eval_binary_op_values {
 
 		return $self->_to_OperatorString( $l, $file, $line )
 			. $self->_to_OperatorString( $r, $file, $line );
+	}
+
+	if ($op eq '∣' || $op eq 'divides' || $op eq '∤') {
+		# The left operand is the divisor: a ∣ b tests b mod a.
+		my $remainder = POSIX::fmod( $self->_to_Number($r), $self->_to_Number($l) );
+		return $remainder if $op eq '∤';
+		return _boolify( $remainder == 0 );
 	}
 
 	# numeric comparisons
