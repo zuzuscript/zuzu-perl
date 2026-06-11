@@ -10,6 +10,11 @@ but using Perlish version numbers like `x.yyyzzz` instead of `x.y.z`.
 
 ### Added
 
+- std/net/url's `fill_template` is now a complete RFC 6570 URI
+  Template implementation (all operators, `:N` prefix and `*` explode
+  modifiers, list and associative values), implemented with
+  URI::Template plus strict template validation, and validated against
+  the official URI Template test suite. Invalid templates throw.
 - New divisibility operators: `a ∣ b` (U+2223; ASCII alias `divides`,
   a new keyword) is a Boolean test that the left operand exactly
   divides the right; `a ∤ b` (U+2224, no ASCII alias) returns the
@@ -48,6 +53,11 @@ but using Perlish version numbers like `x.yyyzzz` instead of `x.y.z`.
   to integers and negative results followed the divisor's sign.
 
 ### Fixed
+
+- std/data/json `decode` no longer returns null for JSON text
+  containing non-ASCII characters (the JSON::Tiny backend is now fed
+  escaped input, as decode_binarystring already did).
+
 
 - `Path.slurp_utf8`, `Path.slurp_utf8_async`, and `Path.lines_utf8` use a
   lax UTF-8 decode (like `readline_utf8` already did), so files containing

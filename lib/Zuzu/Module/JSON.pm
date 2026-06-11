@@ -222,6 +222,9 @@ sub IMPORT {
 			my ( $self, @args ) = @_;
 			my $json = @args ? $args[0] : '';
 			$json = defined($json) ? "$json" : '';
+			# The JSON::Tiny backend mishandles non-ASCII characters in
+			# character strings; escape them like decode_binarystring does.
+			$json = _escape_non_ascii_for_json_backend( $json );
 			return _decode_json_to_zuzu( $self, $json );
 		},
 	);
