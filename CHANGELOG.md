@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project roughly adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html),
 but using Perlish version numbers like `x.yyyzzz` instead of `x.y.z`.
 
+## Unreleased
+
+### Fixed
+
+- `Path.slurp_utf8`, `Path.slurp_utf8_async`, and `Path.lines_utf8` use a
+  lax UTF-8 decode (like `readline_utf8` already did), so files containing
+  well-formed sequences for noncharacter code points such as U+10FFFE can
+  be read, matching zuzu-rust and zuzu-js. The strict decode previously
+  died with "Can't interchange noncharacter code point".
+
 ## 0.003000 - 2026-06-10
 
 *stdlib tag 20260610, languagetests tag 20260610.*
