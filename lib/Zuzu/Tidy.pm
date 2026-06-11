@@ -20,6 +20,7 @@ my %BINARY_OP = map { $_ => 1 } qw(
 	instanceof does can
 	default
 	& | ^
+	<< >> « »
 	@ @? @@
 	▷ ◁ |> <|
 	:= ~= += -= *= /= ×= ÷= **= _= ?:=

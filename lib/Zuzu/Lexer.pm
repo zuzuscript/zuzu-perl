@@ -453,10 +453,19 @@ sub next_token {
 			return $self->_emit('BOOL', 0, $line, $col);
 		}
 
-		# numbers: int/float
+		# numbers: int/float, radix prefixes, uppercase-E exponent
 		if ($ch =~ /[0-9]/) {
 			my $rest = substr($self->src, $self->pos);
-			if ($rest =~ /\A([0-9]+(?:\.[0-9]+)?)/) {
+			# Radix-prefixed integers (lowercase prefixes only). The
+			# token value is normalised to decimal.
+			if ($rest =~ /\A(0x[0-9A-Fa-f]+|0b[01]+|0o[0-7]+)/) {
+				my $lit = $1;
+				$self->_adv(length($lit));
+				my $digits = $lit;
+				$digits =~ s/\A0o/0/;
+				return $self->_emit('NUMBER', 0 + oct($digits), $line, $col);
+			}
+			if ($rest =~ /\A([0-9]+(?:\.[0-9]+)?(?:E[+-]?[0-9]+)?)/) {
 				my $num = $1;
 				$self->_adv(length($num));
 
