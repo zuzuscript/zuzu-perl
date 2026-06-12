@@ -87,10 +87,11 @@ print Zuzu::Tidy->tidy('if(true){say"yes";}');
 
 The distribution installs several scripts:
 
-- `zuzu` runs ZuzuScript programs and is the main command-line entry point.
-- `zuzu-tidy` formats ZuzuScript source using `Zuzu::Tidy`.
-- `zuzu-highlight` produces syntax-highlighted output for ZuzuScript source.
-- `zuzudoc` works with ZuzuScript documentation.
+- `zuzu.pl` runs ZuzuScript programs and is the main command-line entry point.
+- `zuzu-tidy.pl` formats ZuzuScript source using `Zuzu::Tidy`.
+- `zuzu-highlight.pl` produces syntax-highlighted output for ZuzuScript source.
+- `zuzu-plackup.pl` Plack/PSGI wrapper for web apps written in ZuzuScript.
+- `zuzudoc.pl` works with ZuzuScript documentation.
 - `zuzuprove` runs ZuzuScript TAP-style tests.
 - `zuzuzoo` works with ZuzuScript module distributions.
 
