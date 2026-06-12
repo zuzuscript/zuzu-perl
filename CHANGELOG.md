@@ -8,6 +8,8 @@ but using Perlish version numbers like `x.yyyzzz` instead of `x.y.z`.
 
 ## 0.004000 - 2026-06-12
 
+*stdlib tag 20260612, languagetests tag 20260612.*
+
 ### Added
 
 - std/net/url's `fill_template` is now a complete RFC 6570 URI
