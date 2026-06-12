@@ -5,6 +5,7 @@ use utf8;
 our $VERSION = '0.003000';
 
 use Math::BigFloat;
+use Math::BigInt;
 
 use Zuzu::Util::NativeHelpers qw(
 	native_class
@@ -156,7 +157,12 @@ sub IMPORT {
 		bmul => sub { $_[0]->copy->bmul( $_[1] ) },
 		bdiv => sub { $_[0]->copy->bdiv( $_[1] ) },
 		bmod => sub { $_[0]->copy->bmod( $_[1] ) },
-		bpow => sub { $_[0]->copy->bpow( $_[1] ) },
+		bpow => sub {
+			my ( $lhs, $rhs ) = @_;
+			return $lhs->as_int->copy->bpow( $rhs->as_int )
+				if $lhs->is_int && $rhs->is_int && $rhs >= 0;
+			return $lhs->copy->bpow( $rhs );
+		},
 	);
 	for my $name ( sort keys %binary ) {
 		$bignum_class->methods->{$name} = native_function(

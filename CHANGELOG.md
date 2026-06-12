@@ -63,6 +63,9 @@ but using Perlish version numbers like `x.yyyzzz` instead of `x.y.z`.
   be read, matching zuzu-rust and zuzu-js. The strict decode previously
   died with "Can't interchange noncharacter code point".
 - Fix warning on Perl 5.43.x caused by backslash within `qw()`.
+- `std/math/bignum` now produces exact decimal text for integer `bpow`
+  with integer operands (for example, `BigNum.from_dec("10").bpow(1000)`
+  now yields `10` with 1000 zeros, rather than floating-point drift).
 
 ## 0.003000 - 2026-06-10
 
