@@ -57,13 +57,12 @@ but using Perlish version numbers like `x.yyyzzz` instead of `x.y.z`.
 - std/data/json `decode` no longer returns null for JSON text
   containing non-ASCII characters (the JSON::Tiny backend is now fed
   escaped input, as decode_binarystring already did).
-
-
 - `Path.slurp_utf8`, `Path.slurp_utf8_async`, and `Path.lines_utf8` use a
   lax UTF-8 decode (like `readline_utf8` already did), so files containing
   well-formed sequences for noncharacter code points such as U+10FFFE can
   be read, matching zuzu-rust and zuzu-js. The strict decode previously
   died with "Can't interchange noncharacter code point".
+- Fix warning on Perl 5.43.x caused by backslash within `qw()`.
 
 ## 0.003000 - 2026-06-10
 
