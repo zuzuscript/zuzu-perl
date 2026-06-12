@@ -61,6 +61,13 @@ sub _to_plain_decimal {
 	return $text;
 }
 
+sub _to_zuzu_string {
+	my ( $value ) = @_;
+	my $text = 's' . _to_plain_decimal( $value );
+	substr( $text, 0, 1, '' );
+	return $text;
+}
+
 sub IMPORT {
 	my ( $class, $runtime ) = @_;
 
@@ -192,7 +199,7 @@ sub IMPORT {
 		name => 'to_dec',
 		native => sub {
 			my ( $self ) = @_;
-			return _to_plain_decimal( _self_value( $self ) );
+			return _to_zuzu_string( _self_value( $self ) );
 		},
 	);
 
@@ -200,7 +207,7 @@ sub IMPORT {
 		name => 'to_String',
 		native => sub {
 			my ( $self ) = @_;
-			return _to_plain_decimal( _self_value( $self ) );
+			return _to_zuzu_string( _self_value( $self ) );
 		},
 	);
 

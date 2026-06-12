@@ -54,6 +54,9 @@ but using Perlish version numbers like `x.yyyzzz` instead of `x.y.z`.
 
 ### Fixed
 
+- `std/math/bignum` now returns String values from `BigNum.to_dec` and
+  `BigNum.to_String` consistently; use `BigNum.to_Number` for numeric
+  conversion.
 - std/data/json `decode` no longer returns null for JSON text
   containing non-ASCII characters (the JSON::Tiny backend is now fed
   escaped input, as decode_binarystring already did).
