@@ -12,6 +12,8 @@ but using Perlish version numbers like `x.yyyzzz` instead of `x.y.z`.
 
 ### Added
 
+- Added README.md.
+
 - std/net/url's `fill_template` is now a complete RFC 6570 URI
   Template implementation (all operators, `:N` prefix and `*` explode
   modifiers, list and associative values), implemented with
