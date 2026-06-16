@@ -23,6 +23,7 @@ languagetests/lang/control/loops-string-binary-string.zzs
 languagetests/lang/control/loops.zzs
 languagetests/lang/control/module_switch_enum_constants.zzs
 languagetests/lang/control/nested_object_iterator_loop_control.zzs
+languagetests/lang/control/switch-case-operators.zzs
 languagetests/lang/control/switch-more.zzs
 languagetests/lang/control/switch.zzs
 languagetests/lang/exceptions/line-numbers.zzs

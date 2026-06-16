@@ -2180,13 +2180,66 @@ sub eval_switch {
 	my $fell_through = 0;
 	my $result;
 	my $cases = $node->cases // [];
+	my $dispatch = $self->_switch_dispatch_table( $node, $cases, $value );
+	if ( $dispatch and exists $dispatch->{case_index} ) {
+		my $start_index = $dispatch->{case_index};
+		for my $case ( @{$cases}[ $start_index .. $#$cases ] ) {
+			$fell_through = 0;
+
+			eval {
+				$result = $case->{body}->evaluate($self);
+				1;
+			} or do {
+				my $e = $@;
+				if ( ref($e) and $e->{_control} and $e->{_control} eq 'continue' ) {
+					$fell_through = 1;
+					next;
+				}
+				die $e;
+			};
+
+			return $result if !$fell_through;
+		}
+		if ( defined $node->default_block ) {
+			eval {
+				$result = $node->default_block->evaluate($self);
+				1;
+			} or do {
+				my $e = $@;
+				if ( ref($e) and $e->{_control} and $e->{_control} eq 'continue' ) {
+					return $result;
+				}
+				die $e;
+			};
+		}
+		return $result;
+	}
+	if ( $dispatch and $dispatch->{eligible} and defined $node->default_block ) {
+		eval {
+			$result = $node->default_block->evaluate($self);
+			1;
+		} or do {
+			my $e = $@;
+			if ( ref($e) and $e->{_control} and $e->{_control} eq 'continue' ) {
+				return $result;
+			}
+			die $e;
+		};
+		return $result;
+	}
 
 	CASE:
 	for my $case ( @$cases ) {
 		if ( !$matched ) {
-			for my $candidate_expr ( @{ $case->{values} // [] } ) {
+			for my $case_value ( @{ $case->{values} // [] } ) {
+				my $operator = $node->comparator;
+				my $candidate_expr = $case_value;
+				if ( ref($case_value) eq 'HASH' ) {
+					$operator = $case_value->{operator} // $operator;
+					$candidate_expr = $case_value->{value};
+				}
 				my $candidate = $candidate_expr->evaluate($self);
-				if ( $self->_switch_matches( $node->comparator, $value, $candidate, $node->file, $node->line ) ) {
+				if ( $self->_switch_matches( $operator, $value, $candidate, $node->file, $node->line ) ) {
 					$matched = 1;
 					last;
 				}
@@ -2225,6 +2278,67 @@ sub eval_switch {
 	}
 
 	return $result;
+}
+
+sub _switch_dispatch_table {
+	my ( $self, $node, $cases, $value ) = @_;
+
+	my $header_operator = $node->comparator // '==';
+	my %entries;
+	my $eligible = 0;
+	my $common_operator;
+	for my $case_index ( 0 .. $#$cases ) {
+		my $case = $cases->[$case_index];
+		for my $case_value ( @{ $case->{values} // [] } ) {
+			my $operator = $header_operator;
+			my $candidate_expr = $case_value;
+			if ( ref($case_value) eq 'HASH' ) {
+				$operator = $case_value->{operator} // $operator;
+				$candidate_expr = $case_value->{value};
+			}
+			return if $operator ne 'eq' and $operator ne 'eqi' and $operator ne '=';
+			$common_operator //= $operator;
+			return if $operator ne $common_operator;
+			return if !blessed($candidate_expr) or !$candidate_expr->isa('Zuzu::AST::Expr::Literal');
+			my $key = $self->_switch_dispatch_key_for_literal( $operator, $candidate_expr->value );
+			return if !defined $key;
+			return if exists $entries{$key};
+			$entries{$key} = $case_index;
+			$eligible = 1;
+		}
+	}
+	return if !$eligible;
+	my $subject_key = $self->_switch_dispatch_key_for_value( $common_operator, $value );
+	return { eligible => 1 } if !defined $subject_key;
+	return {
+		eligible => 1,
+		( exists $entries{$subject_key} ? ( case_index => $entries{$subject_key} ) : () ),
+	};
+}
+
+sub _switch_dispatch_key_for_literal {
+	my ( $self, $operator, $value ) = @_;
+
+	return 'q:' . $value if $operator eq 'eq';
+	return 'qi:' . CORE::fc($value) if $operator eq 'eqi';
+	if ( $operator eq '=' ) {
+		return if !defined $value or $value !~ /\A-?\d+\z/;
+		return 'i:' . ( 0 + $value );
+	}
+	return;
+}
+
+sub _switch_dispatch_key_for_value {
+	my ( $self, $operator, $value ) = @_;
+
+	return 'q:' . $self->_to_OperatorString($value) if $operator eq 'eq';
+	return 'qi:' . CORE::fc( $self->_to_OperatorString($value) ) if $operator eq 'eqi';
+	if ( $operator eq '=' ) {
+		my $number = $self->_to_Number($value);
+		return if $number != int($number);
+		return 'i:' . int($number);
+	}
+	return;
 }
 
 sub eval_function_def {

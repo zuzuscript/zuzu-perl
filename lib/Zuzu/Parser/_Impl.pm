@@ -1579,8 +1579,9 @@ sub parse_switch {
 	my $comparator = '==';
 	if ( $self->_maybe('OP', ':') ) {
 		my $tok = $self->{tok};
-		if ( $tok->is_OP or $tok->is_KW or $tok->is_IDENT ) {
-			$comparator = $tok->value;
+		my $operator = $self->_switch_comparator_from_token($tok);
+		if ( defined $operator ) {
+			$comparator = $operator;
 			$self->{tok} = $self->{lexer}->next_token;
 		}
 		else {
@@ -1597,9 +1598,9 @@ sub parse_switch {
 		$self->_err("Unterminated switch", $self->{tok}) if $self->{tok}->is_EOF;
 		if ( $self->{tok}->is_KW('case') ) {
 			my $case_kw = $self->_eat('KW', 'case');
-			my @values = ( $self->parse_expression );
+			my @values = ( $self->_parse_switch_case_value );
 			while ( $self->_maybe('OP', ',') ) {
-				push @values, $self->parse_expression;
+				push @values, $self->_parse_switch_case_value;
 			}
 			$self->_eat('OP', ':');
 			my $body = $self->_parse_switch_body_until_labels;
@@ -1631,6 +1632,55 @@ sub parse_switch {
 		cases => \@cases,
 		default_block => $default_block,
 	);
+}
+
+sub _parse_switch_case_value {
+	my ($self) = @_;
+
+	my $operator = $self->_switch_comparator_from_token($self->{tok});
+	if ( defined $operator ) {
+		$self->{tok} = $self->{lexer}->next_token;
+	}
+	my $value;
+	if ( defined $operator and $operator eq 'can' and ( $self->{tok}->is_IDENT or $self->{tok}->is_KW ) ) {
+		my $name_tok = $self->{tok};
+		$self->{tok} = $self->{lexer}->next_token;
+		$value = Zuzu::AST::Expr::Literal->new(
+			file => $name_tok->file,
+			line => $name_tok->line,
+			value => $name_tok->value,
+		);
+	}
+	else {
+		$value = $self->parse_expression;
+	}
+
+	return {
+		operator => $operator,
+		value => $value,
+	};
+}
+
+sub _switch_comparator_from_token {
+	my ( $self, $tok ) = @_;
+
+	return if !$tok;
+	return if !( $tok->is_OP or $tok->is_KW );
+	my $value = $tok->value;
+	return _is_switch_comparator($value) ? $value : undef;
+}
+
+sub _is_switch_comparator {
+	my ($value) = @_;
+
+	return !!{
+		map { $_ => 1 } qw(
+			> < >= ≤ <= ≥ = != ≠ == ≡ ≢ <=> ≶ ≷
+			eq ne gt ge lt le cmp eqi nei gti gei lti lei cmpi
+			in ∈ ∉ subsetof ⊂ supersetof ⊃ equivalentof ⊂⊃
+			instanceof does can ~ @? ∣ divides ∤
+		)
+	}->{$value};
 }
 
 sub _parse_switch_body_until_labels {
