@@ -93,6 +93,12 @@ sub contains_key {
 	return exists $map->{ $key } ? 1 : 0;
 }
 
+sub contains {
+	my ( $self, $key ) = @_;
+
+	return $self->contains_key($key);
+}
+
 sub exists {
 	my ( $self, $key ) = @_;
 
@@ -268,6 +274,8 @@ sub length { scalar CORE::keys %{ $_[0]->map } }
 sub empty { scalar CORE::keys %{ $_[0]->map } ? 0 : 1 }
 
 sub count { $_[0]->length }
+
+sub is_empty { $_[0]->empty }
 
 sub clear {
 	my ( $self ) = @_;

@@ -288,6 +288,8 @@ sub length { scalar @{ $_[0]->items } }
 
 sub empty { @{ $_[0]->items } ? 0 : 1 }
 
+sub is_empty { $_[0]->empty }
+
 sub clear {
 	$_[0]->items( [] );
 	$_[0]->weak( [] );

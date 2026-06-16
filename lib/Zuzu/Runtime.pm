@@ -5320,11 +5320,13 @@ sub _array_method {
 	if ($m eq 'empty') { return $arr->empty; }
 	if ($m eq 'is_empty') { return $arr->is_empty; }
 	if ($m eq 'copy') { return $arr->copy; }
+	if ($m eq 'to_Array') { return $arr->to_Array; }
 	if ($m eq 'get') { return $arr->get( @$args ); }
 	if ($m eq 'set') { return $arr->set( @$args ); }
 	if ($m eq 'set_weak') { return $arr->set_weak( @$args ); }
 	if ($m eq 'clear') { return $arr->clear; }
 	if ($m eq 'join') { return $self->_array_join( $arr, $args, $file, $line ); }
+	if ($m eq 'slice') { return $self->_array_slice( $arr, $args, $file, $line ); }
 	if ($m eq 'to_Set') { return $arr->to_Set; }
 	if ($m eq 'to_Bag') { return $arr->to_Bag; }
 	if ($m eq 'to_Iterator') {
@@ -5375,6 +5377,7 @@ sub _dict_method {
 	if ($m eq 'values') { return $d->values; }
 	if ($m eq 'enumerate') { return $self->_dict_enumerate($d); }
 	if ($m eq 'has') { return $d->contains_key( $args->[0] ); }
+	if ($m eq 'contains') { return $d->contains( $args->[0] ); }
 	if ($m eq 'exists') { return $d->exists( $args->[0] ); }
 	if ($m eq 'defined') { return $d->defined( $args->[0] ); }
 	if ($m eq 'copy') { return $d->copy; }
@@ -5398,6 +5401,7 @@ sub _dict_method {
 	if ($m eq 'length') { return $d->length; }
 	if ($m eq 'count') { return $d->count; }
 	if ($m eq 'empty') { return $d->empty; }
+	if ($m eq 'is_empty') { return $d->is_empty; }
 	if ($m eq 'clear') { return $d->clear; }
 	if ($m eq 'to_Array') { return $self->_dict_to_array($d); }
 	if ($m eq 'to_Iterator') {
@@ -5452,6 +5456,7 @@ sub _pairlist_method {
 	if ( $m eq 'length' ) { return $pairlist->length; }
 	if ( $m eq 'count' ) { return $pairlist->count; }
 	if ( $m eq 'empty' ) { return $pairlist->empty; }
+	if ( $m eq 'is_empty' ) { return $pairlist->is_empty; }
 	if ( $m eq 'clear' ) { return $pairlist->clear; }
 	if ( $m eq 'to_Array' ) { return $self->_pairlist_to_array($pairlist); }
 	if ( $m eq 'to_Iterator' ) {
@@ -5545,6 +5550,18 @@ sub _array_join {
 	}
 
 	return join $separator, @parts;
+}
+
+sub _array_slice {
+	my ( $self, $arr, $args, $file, $line ) = @_;
+
+	die Zuzu::Error->new_runtime(
+		message => 'Array.slice expects one or two arguments',
+		file    => $file,
+		line    => $line,
+	) if @{ $args } < 1 or @{ $args } > 2;
+
+	return $arr->slice( @{ $args } );
 }
 
 sub _make_pair_object {
@@ -5651,6 +5668,7 @@ sub _bag_method {
 	if ($m eq 'length') { return $bag->length; }
 	if ($m eq 'count') { return $bag->count( @$args ); }
 	if ($m eq 'empty') { return $bag->empty; }
+	if ($m eq 'is_empty') { return $bag->is_empty; }
 	if ($m eq 'copy') { return $bag->copy; }
 	if ($m eq 'clear') { return $bag->clear; }
 	if ($m eq 'contains') { return $bag->contains( $args->[0] ); }
