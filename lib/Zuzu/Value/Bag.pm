@@ -82,6 +82,23 @@ sub remove {
 	my ( $self, $needle ) = @_;
 	my @out;
 	my @weak;
+	for ( my $i = 0; $i < @{ $self->items }; $i++ ) {
+		my $v = $self->_value_at($i);
+		next if value_equal( $v, $needle );
+		push @out, undef;
+		push @weak, $self->weak->[$i] ? 1 : 0;
+		store_value( \$out[-1], $v, $weak[-1] );
+	}
+	$self->items( \@out );
+	$self->weak( \@weak );
+
+	return $self;
+}
+
+sub remove_first {
+	my ( $self, $needle ) = @_;
+	my @out;
+	my @weak;
 	my $removed = 0;
 	for ( my $i = 0; $i < @{ $self->items }; $i++ ) {
 		my $v = $self->_value_at($i);
@@ -97,12 +114,6 @@ sub remove {
 	$self->weak( \@weak );
 
 	return $self;
-}
-
-sub remove_first {
-	my ( $self, $needle ) = @_;
-
-	return $self->remove( $needle );
 }
 
 

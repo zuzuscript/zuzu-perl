@@ -5324,6 +5324,7 @@ sub _array_method {
 	if ($m eq 'set') { return $arr->set( @$args ); }
 	if ($m eq 'set_weak') { return $arr->set_weak( @$args ); }
 	if ($m eq 'clear') { return $arr->clear; }
+	if ($m eq 'join') { return $self->_array_join( $arr, $args, $file, $line ); }
 	if ($m eq 'to_Set') { return $arr->to_Set; }
 	if ($m eq 'to_Bag') { return $arr->to_Bag; }
 	if ($m eq 'to_Iterator') {
@@ -5496,7 +5497,54 @@ sub _pairlist_enumerate {
 		);
 	}
 
-	return Zuzu::Value::Bag->new( items => \@pair_objects );
+	return Zuzu::Value::Array->new( items => \@pair_objects );
+}
+
+sub _array_join {
+	my ( $self, $arr, $args, $file, $line ) = @_;
+
+	die Zuzu::Error->new_runtime(
+		message => 'Array.join expects one or two arguments',
+		file    => $file,
+		line    => $line,
+	) if @{ $args } < 1 or @{ $args } > 2;
+
+	my $separator = $self->_to_OperatorString( $args->[0], $file, $line );
+	my $fallback  = $args->[1];
+	my $has_fallback = @{ $args } == 2;
+	my $fallback_string;
+	my @parts;
+	for my $value ( $arr->resolved_items ) {
+		my $part = eval { $self->_to_OperatorString( $value, $file, $line ) };
+		if ( !defined $part and $@ ) {
+			die $@ if !$has_fallback;
+			if ( blessed($fallback) and $fallback->isa('Zuzu::Value::Function') ) {
+				my $replacement = $self->_await_callback_value(
+					$self->_call_function(
+						$fallback,
+						[ $value ],
+						$EMPTY_HASH,
+						$EMPTY_ARRAY,
+						$file,
+						$line,
+					),
+				);
+				$part = $self->_to_OperatorString(
+					$replacement,
+					$file,
+					$line,
+				);
+			}
+			else {
+				$fallback_string //=
+					$self->_to_OperatorString( $fallback, $file, $line );
+				$part = $fallback_string;
+			}
+		}
+		push @parts, $part;
+	}
+
+	return join $separator, @parts;
 }
 
 sub _make_pair_object {
