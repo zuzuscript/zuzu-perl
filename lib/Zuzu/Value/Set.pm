@@ -109,6 +109,12 @@ sub add_weak {
 	return $self;
 }
 
+sub push_weak {
+	my ( $self, @vals ) = @_;
+
+	return $self->add_weak(@vals);
+}
+
 sub remove {
 	my ( $self, $needle ) = @_;
 	my $nkey = $self->_stable_key($needle);

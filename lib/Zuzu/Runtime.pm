@@ -74,10 +74,10 @@ my %DICT_MUTATING_METHOD = map { $_ => 1 } qw(
 	add add_weak set set_weak remove clear
 );
 my %SET_MUTATING_METHOD = map { $_ => 1 } qw(
-	add add_weak push remove clear remove_if
+	add add_weak push push_weak remove clear remove_if
 );
 my %BAG_MUTATING_METHOD = map { $_ => 1 } qw(
-	add add_weak push remove remove_first clear remove_if
+	add add_weak push push_weak remove remove_first clear remove_if
 );
 
 has 'lib' => ( is => 'rw', default => sub { [ @Zuzu::Runtime::DEFAULT_LIB ] } );
@@ -5321,9 +5321,9 @@ sub _array_method {
 	if ($m eq 'is_empty') { return $arr->is_empty; }
 	if ($m eq 'copy') { return $arr->copy; }
 	if ($m eq 'to_Array') { return $arr->to_Array; }
-	if ($m eq 'get') { return $arr->get( @$args ); }
-	if ($m eq 'set') { return $arr->set( @$args ); }
-	if ($m eq 'set_weak') { return $arr->set_weak( @$args ); }
+	if ($m eq 'get') { return $self->_array_get( $arr, $args, $file, $line ); }
+	if ($m eq 'set') { return $self->_array_set( $arr, $args, $file, $line, 0 ); }
+	if ($m eq 'set_weak') { return $self->_array_set( $arr, $args, $file, $line, 1 ); }
 	if ($m eq 'clear') { return $arr->clear; }
 	if ($m eq 'join') { return $self->_array_join( $arr, $args, $file, $line ); }
 	if ($m eq 'slice') { return $self->_array_slice( $arr, $args, $file, $line ); }
@@ -5340,14 +5340,25 @@ sub _array_method {
 	if ($m eq 'sortstr') { return $arr->sortstr; }
 	if ($m eq 'sortnum') { return $arr->sortnum; }
 	if ($m eq 'reverse') { return $arr->reverse; }
-	if ($m eq 'head') { return $arr->head( $args->[0] ); }
-	if ($m eq 'tail') { return $arr->tail( $args->[0] ); }
+	if ($m eq 'head') {
+		$self->_require_method_arity_range( 'Array.head', $args, 0, 1, $file, $line );
+		return $arr->head( $args->[0] );
+	}
+	if ($m eq 'tail') {
+		$self->_require_method_arity_range( 'Array.tail', $args, 0, 1, $file, $line );
+		return $arr->tail( $args->[0] );
+	}
 	if ($m eq 'sum') { return $arr->sum; }
 	if ($m eq 'product') { return $arr->product; }
 	if ($m eq 'shuffle') { return $arr->shuffle; }
-	if ($m eq 'sample') { return $arr->sample( $args->[0] ); }
+	if ($m eq 'sample') {
+		$self->_require_method_arity_range( 'Array.sample', $args, 0, 1, $file, $line );
+		return $arr->sample( $args->[0] );
+	}
 	if ($m eq 'contains') { return $arr->contains( $args->[0] ); }
 	if ($m eq 'map' || $m eq 'grep' || $m eq 'any' || $m eq 'all' || $m eq 'first' || $m eq 'remove' || $m eq 'first_index' || $m eq 'for_each_value') {
+		$self->_require_method_arity( "Array.$m", $args, 1, $file, $line )
+			if $m eq 'map' || $m eq 'grep' || $m eq 'any' || $m eq 'all' || $m eq 'first';
 		return $arr->map( $self->_as_mapper_callback( $args->[0], $file, $line ) ) if $m eq 'map';
 		my $cb = $self->_as_predicate_callback( $args->[0], $file, $line );
 		return $arr->grep($cb) if $m eq 'grep';
@@ -5490,6 +5501,59 @@ sub _dict_enumerate {
 	return Zuzu::Value::Bag->new( items => \@pair_objects );
 }
 
+sub _require_method_arity {
+	my ( $self, $method, $args, $expected, $file, $line ) = @_;
+
+	die Zuzu::Error->new_runtime(
+		message => "$method expects $expected argument"
+			. ( $expected == 1 ? '' : 's' ),
+		file => $file,
+		line => $line,
+	) if @{ $args } != $expected;
+}
+
+sub _require_method_arity_range {
+	my ( $self, $method, $args, $min, $max, $file, $line ) = @_;
+
+	die Zuzu::Error->new_runtime(
+		message => "$method expects between $min and $max arguments",
+		file => $file,
+		line => $line,
+	) if @{ $args } < $min or @{ $args } > $max;
+}
+
+sub _array_index {
+	my ( $self, $arr, $index ) = @_;
+
+	my $idx = 0 + ( $index // 0 );
+	$idx += $arr->length if $idx < 0;
+
+	return $idx;
+}
+
+sub _array_get {
+	my ( $self, $arr, $args, $file, $line ) = @_;
+
+	$self->_require_method_arity_range( 'Array.get', $args, 1, 2, $file, $line );
+	my $idx = $self->_array_index( $arr, $args->[0] );
+
+	return $arr->get( $idx, $args->[1] );
+}
+
+sub _array_set {
+	my ( $self, $arr, $args, $file, $line, $weak ) = @_;
+
+	$self->_require_method_arity( $weak ? 'Array.set_weak' : 'Array.set', $args, 2, $file, $line );
+	my $idx = $self->_array_index( $arr, $args->[0] );
+	die Zuzu::Error->new_runtime(
+		message => 'Array index is out of range',
+		file => $file,
+		line => $line,
+	) if $idx < 0;
+
+	return $weak ? $arr->set_weak( $idx, $args->[1] ) : $arr->set( $idx, $args->[1] );
+}
+
 sub _pairlist_enumerate {
 	my ( $self, $pairlist ) = @_;
 
@@ -5611,7 +5675,7 @@ sub _set_method {
 		if $SET_MUTATING_METHOD{$m};
 
 	if ($m eq 'add' || $m eq 'push') { return $set->add( @$args ); }
-	if ($m eq 'add_weak') { return $set->add_weak( @$args ); }
+	if ($m eq 'add_weak' || $m eq 'push_weak') { return $set->add_weak( @$args ); }
 	if ($m eq 'remove') { return $set->remove( $args->[0] ); }
 	if ($m eq 'length') { return $set->length; }
 	if ($m eq 'count') { return $set->count; }
@@ -5662,7 +5726,7 @@ sub _bag_method {
 		if $BAG_MUTATING_METHOD{$m};
 
 	if ($m eq 'add' || $m eq 'push') { return $bag->add( @$args ); }
-	if ($m eq 'add_weak') { return $bag->add_weak( @$args ); }
+	if ($m eq 'add_weak' || $m eq 'push_weak') { return $bag->add_weak( @$args ); }
 	if ($m eq 'remove') { return $bag->remove( $args->[0] ); }
 	if ($m eq 'remove_first') { return $bag->remove_first( $args->[0] ); }
 	if ($m eq 'length') { return $bag->length; }
