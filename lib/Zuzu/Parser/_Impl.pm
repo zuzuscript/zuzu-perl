@@ -2905,6 +2905,22 @@ sub _parse_invocation_args {
 			next;
 		}
 
+		if (
+			( $self->{tok}->is_IDENT or $self->{tok}->is_KW )
+			and $self->_peek_token->is_OP(':')
+		) {
+			my $name_tok = $self->{tok};
+			$self->{tok} = $self->{lexer}->next_token;
+			$self->_eat('OP', ':');
+			if ( $self->{tok}->is_OP('...') ) {
+				$self->_err("Spread arguments cannot be named", $self->{tok});
+			}
+			my $value_expr = $self->parse_expression;
+			push @args, [ $name_tok->value, $value_expr ];
+			$self->_maybe('OP', ',');
+			next;
+		}
+
 		my $expr = $self->parse_expression;
 		if ( $self->_maybe('OP', ':') ) {
 			if ( $self->{tok}->is_OP('...') ) {

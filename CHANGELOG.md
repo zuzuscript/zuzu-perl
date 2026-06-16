@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project roughly adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html),
 but using Perlish version numbers like `x.yyyzzz` instead of `x.y.z`.
 
+## Unreleased
+
+### Added
+
+- Added shared conformance coverage for dynamic method calls whose method
+  expression evaluates to either a method name or a Method value, including
+  named arguments and `std/eval`.
+
+### Fixed
+
+- Bare wordlike named-argument keys such as `length: 42` now parse like
+  the same unquoted keys in Dict and PairList literals.
+
 ## 0.004000 - 2026-06-12
 
 *stdlib tag 20260612, languagetests tag 20260612.*
