@@ -2097,35 +2097,41 @@ sub _parse_leftward_chain_rhs {
 sub _prec {
 	my ($self, $op) = @_;
 
-	return 1 if $op eq 'or' || $op eq '⋁';
+	return 1 if $op eq 'or' || $op eq '⋁' || $op eq 'or?' || $op eq '⋁?';
 
-	return 2 if $op eq 'xor' || $op eq '⊻';
+	return 2 if $op eq 'onlyif' || $op eq '⊨' || $op eq 'onlyif?' || $op eq '⊨?';
 
-	return 3 if $op eq 'and' || $op eq '⋀' || $op eq 'nand' || $op eq '⊼';
+	return 3 if $op eq 'xor' || $op eq '⊻' || $op eq 'xor?' || $op eq '⊻?'
+		|| $op eq 'nor' || $op eq '⊽' || $op eq 'nor?' || $op eq '⊽?'
+		|| $op eq 'xnor' || $op eq '↔' || $op eq 'xnor?' || $op eq '↔?';
 
-	return 4 if $op eq 'default';
+	return 4 if $op eq 'and' || $op eq '⋀' || $op eq 'and?' || $op eq '⋀?'
+		|| $op eq 'nand' || $op eq '⊼' || $op eq 'nand?' || $op eq '⊼?'
+		|| $op eq 'butnot' || $op eq '⊭' || $op eq 'butnot?' || $op eq '⊭?';
 
-	return 4 if $op eq '==' || $op eq '≡' || $op eq '!=' || $op eq '≢';
+	return 5 if $op eq 'default';
 
-	return 5 if $op eq '=' || $op eq '≠' || $op eq '<' || $op eq '>' || $op eq '<=' || $op eq '≤' || $op eq '>=' || $op eq '≥' || $op eq '<=>' || $op eq '≶' || $op eq '≷' || $op eq 'eq' || $op eq 'ne' || $op eq 'gt' || $op eq 'ge' || $op eq 'lt' || $op eq 'le' || $op eq 'cmp' || $op eq 'eqi' || $op eq 'nei' || $op eq 'gti' || $op eq 'gei' || $op eq 'lti' || $op eq 'lei' || $op eq 'cmpi' || $op eq 'in' || $op eq '∈' || $op eq '∉' || $op eq 'subsetof' || $op eq '⊂' || $op eq 'supersetof' || $op eq '⊃' || $op eq 'equivalentof' || $op eq '⊂⊃' || $op eq 'instanceof' || $op eq 'does' || $op eq 'can' || $op eq '~' || $op eq '@' || $op eq '@?' || $op eq '@@' || $op eq '∣' || $op eq 'divides' || $op eq '∤';
+	return 5 if $op eq '==' || $op eq '≡' || $op eq '!=' || $op eq '≢';
 
-	return 6 if $op eq '|';
+	return 6 if $op eq '=' || $op eq '≠' || $op eq '<' || $op eq '>' || $op eq '<=' || $op eq '≤' || $op eq '>=' || $op eq '≥' || $op eq '<=>' || $op eq '≶' || $op eq '≷' || $op eq 'eq' || $op eq 'ne' || $op eq 'gt' || $op eq 'ge' || $op eq 'lt' || $op eq 'le' || $op eq 'cmp' || $op eq 'eqi' || $op eq 'nei' || $op eq 'gti' || $op eq 'gei' || $op eq 'lti' || $op eq 'lei' || $op eq 'cmpi' || $op eq 'in' || $op eq '∈' || $op eq '∉' || $op eq 'subsetof' || $op eq '⊂' || $op eq 'supersetof' || $op eq '⊃' || $op eq 'equivalentof' || $op eq '⊂⊃' || $op eq 'instanceof' || $op eq 'does' || $op eq 'can' || $op eq '~' || $op eq '@' || $op eq '@?' || $op eq '@@' || $op eq '∣' || $op eq 'divides' || $op eq '∤';
 
-	return 7 if $op eq '^';
+	return 7 if $op eq '|';
 
-	return 8 if $op eq '&';
+	return 8 if $op eq '^';
 
-	return 8.5 if $op eq '<<' || $op eq '«' || $op eq '>>' || $op eq '»';
+	return 9 if $op eq '&';
 
-	return 9 if $op eq 'union' || $op eq '⋃' || $op eq 'intersection' || $op eq '⋂' || $op eq '\\' || $op eq '∖';
+	return 10 if $op eq '<<' || $op eq '«' || $op eq '>>' || $op eq '»';
 
-	return 10 if $op eq '_' ;
+	return 11 if $op eq 'union' || $op eq '⋃' || $op eq 'intersection' || $op eq '⋂' || $op eq '\\' || $op eq '∖';
 
-	return 11 if $op eq '+' || $op eq '-' ;
+	return 12 if $op eq '_' ;
 
-	return 12 if $op eq '*' || $op eq '/' || $op eq '×' || $op eq '÷' || $op eq 'mod';
+	return 13 if $op eq '+' || $op eq '-' ;
 
-	return 13 if $op eq '**';
+	return 14 if $op eq '*' || $op eq '/' || $op eq '×' || $op eq '÷' || $op eq 'mod';
+
+	return 15 if $op eq '**';
 
 	return 0;
 }
@@ -2158,8 +2164,12 @@ sub _parse_prec {
 		my $prec = $self->_prec($op);
 		last if $prec < $min_prec || $prec == 0;
 
-		# right-assoc power
-		my $next_min = ($op eq '**') ? $prec : ($prec + 1);
+		my $right_assoc = $op eq '**'
+			|| $op eq 'onlyif'
+			|| $op eq '⊨'
+			|| $op eq 'onlyif?'
+			|| $op eq '⊨?';
+		my $next_min = $right_assoc ? $prec : ($prec + 1);
 
 		$self->{tok} = $self->{lexer}->next_token; # consume op
 		my $right;

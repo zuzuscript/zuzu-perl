@@ -15,9 +15,15 @@ but using Perlish version numbers like `x.yyyzzz` instead of `x.y.z`.
 - Added shared conformance coverage for dynamic method calls whose method
   expression evaluates to either a method name or a Method value, including
   named arguments and `std/eval`.
+- Added logical operators `nor`/`⊽`, `xnor`/`↔`, `onlyif`/`⊨`,
+  `butnot`/`⊭`, plus the value-preserving `and?`/`⋀?`, `or?`/`⋁?`,
+  `xor?`/`⊻?`, `xnor?`/`↔?`, `nand?`/`⊼?`, `nor?`/`⊽?`,
+  `onlyif?`/`⊨?`, and `butnot?`/`⊭?` variants.
 
 ### Fixed
 
+- Boolean `and`/`⋀` now returns a Boolean value instead of returning the raw
+  right operand.
 - Collection parity fixes: `Array.join()` now supports an unstringable-value
   substitute or callback, `PairList.enumerate()` returns an Array of pairs, and
   `Bag.remove()` removes every matching value while `remove_first()` removes

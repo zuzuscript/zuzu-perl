@@ -14,8 +14,8 @@ my %BINARY_OP = map { $_ => 1 } qw(
 	+ - * / × ÷ ** mod
 	_ ~
 	= == != < > <= >= <=> eq ne gt ge lt le cmp eqi nei gti gei lti lei cmpi
-	and or xor nand
-	× ÷ ≠ ≤ ≥ ≡ ≢ ≶ ≷ ⋀ ⋁ ⊻ ⊼
+	and and? or or? xor xor? nand nand? nor nor? xnor xnor? onlyif onlyif? butnot butnot?
+	× ÷ ≠ ≤ ≥ ≡ ≢ ≶ ≷ ⋀ ⋀? ⋁ ⋁? ⊻ ⊻? ⊼ ⊼? ⊽ ⊽? ↔ ↔? ⊨ ⊨? ⊭ ⊭?
 	in ∈ ∉ union ⋃ intersection ⋂ subsetof ⊂ supersetof ⊃ equivalentof ⊂⊃ ∖
 	instanceof does can
 	default
@@ -48,9 +48,21 @@ my %CANONICAL_OPERATOR_SPELLING = (
 	'not'          => '¬',
 	'sqrt'         => '√',
 	'and'          => '⋀',
+	'and?'         => '⋀?',
 	'nand'         => '⊼',
+	'nand?'        => '⊼?',
+	'nor'          => '⊽',
+	'nor?'         => '⊽?',
 	'xor'          => '⊻',
+	'xor?'         => '⊻?',
+	'xnor'         => '↔',
+	'xnor?'        => '↔?',
 	'or'           => '⋁',
+	'or?'          => '⋁?',
+	'onlyif'       => '⊨',
+	'onlyif?'      => '⊨?',
+	'butnot'       => '⊭',
+	'butnot?'      => '⊭?',
 	'union'        => '⋃',
 	'intersection' => '⋂',
 	'\\'           => '∖',

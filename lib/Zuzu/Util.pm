@@ -30,7 +30,7 @@ sub is_keyword {
 		let const function method static class trait extends with but
 		if else unless while for in return next last switch case default continue
 		true false null
-		and or xor nand not
+		and or xor nand nor xnor onlyif butnot not
 		eq ne gt ge lt le cmp eqi nei gti gei lti lei cmpi
 		mod abs sqrt floor ceil round int length uc lc typeof instanceof does can
 		union intersection subsetof supersetof equivalentof divides

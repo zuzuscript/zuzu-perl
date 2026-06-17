@@ -3789,7 +3789,14 @@ sub eval_binary {
 	if ($op eq 'and' || $op eq '⋀') {
 		my $l = $node->left->evaluate($self);
 
-		return $self->_to_Boolean($l) ? $node->right->evaluate($self) : $FALSE;
+		return $self->_to_Boolean($l)
+			? _boolify( $self->_to_Boolean( $node->right->evaluate($self) ) )
+			: $FALSE;
+	}
+	if ($op eq 'and?' || $op eq '⋀?') {
+		my $l = $node->left->evaluate($self);
+
+		return $self->_to_Boolean($l) ? $node->right->evaluate($self) : $l;
 	}
 	if ($op eq 'nand' || $op eq '⊼') {
 		my $l = $node->left->evaluate($self);
@@ -3798,16 +3805,92 @@ sub eval_binary {
 
 		return $self->_to_Boolean( $node->right->evaluate($self) ) ? $FALSE : $TRUE;
 	}
+	if ($op eq 'nand?' || $op eq '⊼?') {
+		my $l = $node->left->evaluate($self);
+		my $r = $node->right->evaluate($self);
+
+		return $self->_to_Boolean($l)
+			? ( $self->_to_Boolean($r) ? $FALSE : $TRUE )
+			: ( $self->_to_Boolean($r) ? $r : $TRUE );
+	}
 	if ($op eq 'xor' || $op eq '⊻') {
-		my $l = $self->_to_Boolean( $node->left->evaluate($self) ) ? $TRUE : $FALSE;
-		my $r = $self->_to_Boolean( $node->right->evaluate($self) ) ? $TRUE : $FALSE;
+		my $l = $self->_to_Boolean( $node->left->evaluate($self) ) ? 1 : 0;
+		my $r = $self->_to_Boolean( $node->right->evaluate($self) ) ? 1 : 0;
 
 		return ($l xor $r) ? $TRUE : $FALSE;
+	}
+	if ($op eq 'xor?' || $op eq '⊻?') {
+		my $l = $node->left->evaluate($self);
+		my $r = $node->right->evaluate($self);
+
+		return $self->_to_Boolean($l)
+			? ( $self->_to_Boolean($r) ? $FALSE : $l )
+			: ( $self->_to_Boolean($r) ? $r : $FALSE );
+	}
+	if ($op eq 'xnor' || $op eq '↔') {
+		my $l = $self->_to_Boolean( $node->left->evaluate($self) ) ? 1 : 0;
+		my $r = $self->_to_Boolean( $node->right->evaluate($self) ) ? 1 : 0;
+
+		return $l == $r ? $TRUE : $FALSE;
+	}
+	if ($op eq 'xnor?' || $op eq '↔?') {
+		my $l = $node->left->evaluate($self);
+		my $r = $node->right->evaluate($self);
+
+		return $self->_to_Boolean($l)
+			? $r
+			: ( $self->_to_Boolean($r) ? $l : $TRUE );
+	}
+	if ($op eq 'nor' || $op eq '⊽') {
+		my $l = $node->left->evaluate($self);
+
+		return $FALSE if $self->_to_Boolean($l);
+
+		return $self->_to_Boolean( $node->right->evaluate($self) ) ? $FALSE : $TRUE;
+	}
+	if ($op eq 'nor?' || $op eq '⊽?') {
+		my $l = $node->left->evaluate($self);
+		my $r = $node->right->evaluate($self);
+
+		return $self->_to_Boolean($l)
+			? ( $self->_to_Boolean($r) ? $FALSE : $r )
+			: ( $self->_to_Boolean($r) ? $l : $TRUE );
+	}
+	if ($op eq 'onlyif' || $op eq '⊨') {
+		my $l = $node->left->evaluate($self);
+
+		return $TRUE if !$self->_to_Boolean($l);
+
+		return _boolify( $self->_to_Boolean( $node->right->evaluate($self) ) );
+	}
+	if ($op eq 'onlyif?' || $op eq '⊨?') {
+		my $l = $node->left->evaluate($self);
+
+		return $self->_to_Boolean($l) ? $node->right->evaluate($self) : $TRUE;
+	}
+	if ($op eq 'butnot' || $op eq '⊭') {
+		my $l = $node->left->evaluate($self);
+
+		return $FALSE if !$self->_to_Boolean($l);
+
+		return $self->_to_Boolean( $node->right->evaluate($self) ) ? $FALSE : $TRUE;
+	}
+	if ($op eq 'butnot?' || $op eq '⊭?') {
+		my $l = $node->left->evaluate($self);
+
+		return $l if !$self->_to_Boolean($l);
+
+		return $self->_to_Boolean( $node->right->evaluate($self) ) ? $FALSE : $l;
 	}
 	if ($op eq 'or' || $op eq '⋁') {
 		my $l = $node->left->evaluate($self);
 
 		return $self->_to_Boolean($l) ? $TRUE : _boolify( $self->_to_Boolean( $node->right->evaluate($self) ) );
+	}
+	if ($op eq 'or?' || $op eq '⋁?') {
+		my $l = $node->left->evaluate($self);
+
+		return $self->_to_Boolean($l) ? $l : $node->right->evaluate($self);
 	}
 	if ( $op eq '▷' or $op eq '|>' or $op eq '◁' or $op eq '<|' ) {
 		return $self->_eval_chain_operator($node);
