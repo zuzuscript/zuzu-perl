@@ -256,11 +256,9 @@ lib/Zuzu/Value/Trait.pm
 lib/Zuzu/Weak.pm
 lib/Zuzu/Web/PSGI.pm
 lib/Zuzu/Web/PSGI/CLI.pm
-Makefile.old
 Makefile.PL
 MANIFEST			This list of files
 MANIFEST.SKIP
-pm_to_blib
 README.md
 stdlib/CHANGELOG.md
 stdlib/modules/javascript.zzm
