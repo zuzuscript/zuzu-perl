@@ -238,6 +238,7 @@ lib/Zuzu/Tidy/CLI.pm
 lib/Zuzu/Token.pm
 lib/Zuzu/Util.pm
 lib/Zuzu/Util/NativeHelpers.pm
+lib/Zuzu/Util/Number.pm
 lib/Zuzu/Value/Array.pm
 lib/Zuzu/Value/Bag.pm
 lib/Zuzu/Value/BinaryString.pm
@@ -1927,6 +1928,7 @@ t/10-web-psgi-plack.t
 t/11-web-psgi-cli.t
 t/12-web-psgi-path-body.t
 t/13-runtime-finish.t
+t/14-number-util.t
 t/99-ztests.t
 t/bench/core1-baseline.pl
 t/bench/path-operators-phase5.pl

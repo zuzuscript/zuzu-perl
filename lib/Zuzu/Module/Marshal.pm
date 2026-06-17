@@ -4,7 +4,6 @@ use utf8;
 
 our $VERSION = '0.004000';
 
-use POSIX qw( isfinite );
 use Scalar::Util qw( blessed looks_like_number refaddr );
 
 use Zuzu::Marshal::CBOR qw(
@@ -28,6 +27,7 @@ use Zuzu::Util::NativeHelpers qw(
 	native_class
 	native_function
 );
+use Zuzu::Util::Number qw( is_finite_number );
 use Zuzu::Env;
 use Zuzu::Value::BinaryString;
 use Zuzu::Value::Boolean;
@@ -1403,7 +1403,7 @@ sub _number_to_cbor {
 	my ( $value ) = @_;
 
 	my $number = 0 + $value;
-	die "Number values must be finite" if !isfinite($number);
+	die "Number values must be finite" if !is_finite_number($number);
 
 	if ( _is_integral_number($number) and abs($number) <= MAX_SAFE_INTEGER ) {
 		return int($number);
@@ -1430,7 +1430,7 @@ sub _is_integer_value {
 
 sub _is_finite_number {
 	my ( $number ) = @_;
-	return isfinite($number) ? 1 : 0;
+	return is_finite_number($number) ? 1 : 0;
 }
 
 sub _is_negative_zero {

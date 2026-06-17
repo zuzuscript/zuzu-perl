@@ -27,6 +27,9 @@ but using Perlish version numbers like `x.yyyzzz` instead of `x.y.z`.
 
 - Boolean `and`/`⋀` now returns a Boolean value instead of returning the raw
   right operand.
+- `std/marshal` and its CBOR validator no longer depend on `POSIX`
+  exporting `isfinite`, fixing load failures on older Perl/POSIX module
+  combinations.
 - Collection parity fixes: `Array.join()` now supports an unstringable-value
   substitute or callback, `PairList.enumerate()` returns an Array of pairs, and
   `Bag.remove()` removes every matching value while `remove_first()` removes
@@ -38,6 +41,10 @@ but using Perlish version numbers like `x.yyyzzz` instead of `x.y.z`.
   `sample()`/`shuffle()` return randomised non-mutating results.
 - Bare wordlike named-argument keys such as `length: 42` now parse like
   the same unquoted keys in Dict and PairList literals.
+- TZ-dependent Perl runtime tests now skip their timezone-sensitive cases when
+  `TZ` is not set.
+- The Perl HTTP async overlap integration test now checks server-side
+  connection overlap instead of relying on a tight total wall-clock threshold.
 
 ## 0.004000 - 2026-06-12
 
