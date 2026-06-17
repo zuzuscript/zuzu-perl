@@ -47,6 +47,7 @@ my %CANONICAL_OPERATOR_SPELLING = (
 	'!='           => '≢',
 	'not'          => '¬',
 	'sqrt'         => '√',
+	'divides'      => '∣',
 	'and'          => '⋀',
 	'and?'         => '⋀?',
 	'nand'         => '⊼',

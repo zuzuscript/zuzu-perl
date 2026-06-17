@@ -19,6 +19,9 @@ but using Perlish version numbers like `x.yyyzzz` instead of `x.y.z`.
   `butnot`/`⊭`, plus the value-preserving `and?`/`⋀?`, `or?`/`⋁?`,
   `xor?`/`⊻?`, `xnor?`/`↔?`, `nand?`/`⊼?`, `nor?`/`⊽?`,
   `onlyif?`/`⊨?`, and `butnot?`/`⊭?` variants.
+- `std/path/zz` ZZPath expressions now recognise and evaluate the new
+  language operators for bit shifts, divisibility, logical combinations, and
+  value-preserving logical combinations.
 
 ### Fixed
 
