@@ -3,6 +3,8 @@ use Test2::V0;
 use Encode qw( decode );
 use File::Spec;
 use File::Temp qw( tempdir );
+use IPC::Open3 qw( open3 );
+use Symbol qw( gensym );
 
 use Zuzu::Tidy;
 
@@ -409,6 +411,28 @@ my $canonical_exit = $? >> 8;
 is $canonical_exit, 0, 'zuzu-tidy.pl --canonical-operators exits successfully';
 is $canonical_output, "let n := 2 × 3;\n",
 	'zuzu-tidy.pl --canonical-operators prints canonical operators';
+
+my $stdin_err = gensym;
+my $stdin_pid = open3(
+	my $stdin_in,
+	my $stdin_out,
+	$stdin_err,
+	$^X,
+	$bin,
+	'--stdin',
+);
+binmode $stdin_in, ':encoding(UTF-8)';
+binmode $stdin_out, ':encoding(UTF-8)';
+print {$stdin_in} "let stdin_value:=4\n";
+close $stdin_in;
+my $stdin_output = do { local $/; <$stdin_out> };
+my $stdin_error = do { local $/; <$stdin_err> };
+waitpid $stdin_pid, 0;
+my $stdin_exit = $? >> 8;
+is $stdin_exit, 0, 'zuzu-tidy.pl --stdin exits successfully';
+is $stdin_error, '', 'zuzu-tidy.pl --stdin does not print errors';
+is $stdin_output, "let stdin_value := 4;\n",
+	'zuzu-tidy.pl --stdin prints tidied output';
 
 my $in_place_cmd = "$^X $bin --in-place $script";
 my $in_place_output = qx{$in_place_cmd};
