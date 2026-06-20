@@ -8,7 +8,7 @@ but using Perlish version numbers like `x.yyyzzz` instead of `x.y.z`.
 
 ## Unreleased
 
-### Fixed
+### Added
 
 - Switch case and default bodies now have access to the active switch value
   via `^^`, including when execution falls through cases.
