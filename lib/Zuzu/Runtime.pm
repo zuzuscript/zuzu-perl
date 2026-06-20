@@ -2176,106 +2176,119 @@ sub eval_switch {
 	my ( $self, $node ) = @_;
 
 	my $value = $node->value_expr->evaluate($self);
+	my $env = Zuzu::Env->_new_fast( $self->{_stack}[-1] );
+	$self->_push_env($env);
+	$env->declare( '^^', $value, 1, 'Any' );
+
 	my $matched = 0;
 	my $fell_through = 0;
 	my $result;
 	my $cases = $node->cases // [];
 	my $dispatch = $self->_switch_dispatch_table( $node, $cases, $value );
-	if ( $dispatch and exists $dispatch->{case_index} ) {
-		my $start_index = $dispatch->{case_index};
-		for my $case ( @{$cases}[ $start_index .. $#$cases ] ) {
-			$fell_through = 0;
+	my $ok = eval {
+		SWITCH_EVAL: {
+			if ( $dispatch and exists $dispatch->{case_index} ) {
+				my $start_index = $dispatch->{case_index};
+				for my $case ( @{$cases}[ $start_index .. $#$cases ] ) {
+					$fell_through = 0;
 
-			eval {
-				$result = $case->{body}->evaluate($self);
-				1;
-			} or do {
-				my $e = $@;
-				if ( ref($e) and $e->{_control} and $e->{_control} eq 'continue' ) {
-					$fell_through = 1;
-					next;
+					eval {
+						$result = $case->{body}->evaluate($self);
+						1;
+					} or do {
+						my $e = $@;
+						if ( ref($e) and $e->{_control} and $e->{_control} eq 'continue' ) {
+							$fell_through = 1;
+							next;
+						}
+						die $e;
+					};
+
+					last if !$fell_through;
 				}
-				die $e;
-			};
+				if ( defined $node->default_block ) {
+					eval {
+						$result = $node->default_block->evaluate($self);
+						1;
+					} or do {
+						my $e = $@;
+						if ( ref($e) and $e->{_control} and $e->{_control} eq 'continue' ) {
+							last SWITCH_EVAL;
+						}
+						die $e;
+					};
+				}
+				last SWITCH_EVAL;
+			}
+			if ( $dispatch and $dispatch->{eligible} and defined $node->default_block ) {
+				eval {
+					$result = $node->default_block->evaluate($self);
+					1;
+				} or do {
+					my $e = $@;
+					if ( ref($e) and $e->{_control} and $e->{_control} eq 'continue' ) {
+						last SWITCH_EVAL;
+					}
+					die $e;
+				};
+				last SWITCH_EVAL;
+			}
 
-			return $result if !$fell_through;
+			CASE:
+			for my $case ( @$cases ) {
+				if ( !$matched ) {
+					for my $case_value ( @{ $case->{values} // [] } ) {
+						my $operator = $node->comparator;
+						my $candidate_expr = $case_value;
+						if ( ref($case_value) eq 'HASH' ) {
+							$operator = $case_value->{operator} // $operator;
+							$candidate_expr = $case_value->{value};
+						}
+						my $candidate = $candidate_expr->evaluate($self);
+						if ( $self->_switch_matches( $operator, $value, $candidate, $node->file, $node->line ) ) {
+							$matched = 1;
+							last;
+						}
+					}
+				}
+
+				next if !$matched;
+				$fell_through = 0;
+
+				eval {
+					$result = $case->{body}->evaluate($self);
+					1;
+				} or do {
+					my $e = $@;
+					if ( ref($e) and $e->{_control} and $e->{_control} eq 'continue' ) {
+						$fell_through = 1;
+						next CASE;
+					}
+					die $e;
+				};
+
+				last CASE;
+			}
+
+			if ( ( !$matched or $fell_through ) and defined $node->default_block ) {
+				eval {
+					$result = $node->default_block->evaluate($self);
+					1;
+				} or do {
+					my $e = $@;
+					if ( ref($e) and $e->{_control} and $e->{_control} eq 'continue' ) {
+						last SWITCH_EVAL;
+					}
+					die $e;
+				};
+			}
 		}
-		if ( defined $node->default_block ) {
-			eval {
-				$result = $node->default_block->evaluate($self);
-				1;
-			} or do {
-				my $e = $@;
-				if ( ref($e) and $e->{_control} and $e->{_control} eq 'continue' ) {
-					return $result;
-				}
-				die $e;
-			};
-		}
-		return $result;
-	}
-	if ( $dispatch and $dispatch->{eligible} and defined $node->default_block ) {
-		eval {
-			$result = $node->default_block->evaluate($self);
-			1;
-		} or do {
-			my $e = $@;
-			if ( ref($e) and $e->{_control} and $e->{_control} eq 'continue' ) {
-				return $result;
-			}
-			die $e;
-		};
-		return $result;
-	}
 
-	CASE:
-	for my $case ( @$cases ) {
-		if ( !$matched ) {
-			for my $case_value ( @{ $case->{values} // [] } ) {
-				my $operator = $node->comparator;
-				my $candidate_expr = $case_value;
-				if ( ref($case_value) eq 'HASH' ) {
-					$operator = $case_value->{operator} // $operator;
-					$candidate_expr = $case_value->{value};
-				}
-				my $candidate = $candidate_expr->evaluate($self);
-				if ( $self->_switch_matches( $operator, $value, $candidate, $node->file, $node->line ) ) {
-					$matched = 1;
-					last;
-				}
-			}
-		}
-
-		next if !$matched;
-		$fell_through = 0;
-
-		eval {
-			$result = $case->{body}->evaluate($self);
-			1;
-		} or do {
-			my $e = $@;
-			if ( ref($e) and $e->{_control} and $e->{_control} eq 'continue' ) {
-				$fell_through = 1;
-				next CASE;
-			}
-			die $e;
-		};
-
-		last CASE;
-	}
-
-	if ( ( !$matched or $fell_through ) and defined $node->default_block ) {
-		eval {
-			$result = $node->default_block->evaluate($self);
-			1;
-		} or do {
-			my $e = $@;
-			if ( ref($e) and $e->{_control} and $e->{_control} eq 'continue' ) {
-				return $result;
-			}
-			die $e;
-		};
-	}
+		1;
+	};
+	my $err = $@;
+	$self->_pop_env;
+	die $err if !$ok;
 
 	return $result;
 }

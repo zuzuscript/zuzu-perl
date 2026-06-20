@@ -23,9 +23,9 @@ with `..`; use the local submodules.
 
 ## Project Shape
 
-- `bin/zuzu` is the main command-line runner.
-- `bin/zuzu-tidy`, `bin/zuzu-highlight`, `bin/zuzudoc`, `bin/zuzuprove`,
-  and `bin/zuzuzoo` are related tools.
+- `bin/zuzu.pl` is the main command-line runner.
+- `bin/zuzu-tidy.pl`, `bin/zuzu-highlight/pl`, and `bin/zuzudoc.pl`
+  are related tools.
 - `lib/Zuzu/Lexer.pm`, `lib/Zuzu/Parser*.pm`, `lib/Zuzu/Runtime.pm`, and
   `lib/Zuzu/Value/` hold the language implementation.
 - `lib/Zuzu/Module/` contains Perl implementations of runtime-supported

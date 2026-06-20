@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project roughly adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html),
 but using Perlish version numbers like `x.yyyzzz` instead of `x.y.z`.
 
+## Unreleased
+
+### Fixed
+
+- Switch case and default bodies now have access to the active switch value
+  via `^^`, including when execution falls through cases.
+
 ## 0.006000 - 2026-06-19
 
 ### Fixed
