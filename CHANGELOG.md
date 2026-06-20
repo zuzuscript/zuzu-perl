@@ -13,6 +13,11 @@ but using Perlish version numbers like `x.yyyzzz` instead of `x.y.z`.
 - Switch case and default bodies now have access to the active switch value
   via `^^`, including when execution falls through cases.
 
+### Fixed
+
+- `switch` no longer executes the `default` block after a matched case unless
+  fall-through was requested with `continue`.
+
 ## 0.006000 - 2026-06-19
 
 ### Fixed

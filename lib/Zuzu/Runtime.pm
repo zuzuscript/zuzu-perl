@@ -2189,6 +2189,7 @@ sub eval_switch {
 		SWITCH_EVAL: {
 			if ( $dispatch and exists $dispatch->{case_index} ) {
 				my $start_index = $dispatch->{case_index};
+				$matched = 1;
 				for my $case ( @{$cases}[ $start_index .. $#$cases ] ) {
 					$fell_through = 0;
 
@@ -2206,7 +2207,7 @@ sub eval_switch {
 
 					last if !$fell_through;
 				}
-				if ( defined $node->default_block ) {
+				if ( ( !$matched || $fell_through ) and defined $node->default_block ) {
 					eval {
 						$result = $node->default_block->evaluate($self);
 						1;
