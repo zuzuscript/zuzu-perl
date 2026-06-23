@@ -17,6 +17,8 @@ but using Perlish version numbers like `x.yyyzzz` instead of `x.y.z`.
 
 - `switch` no longer executes the `default` block after a matched case unless
   fall-through was requested with `continue`.
+- Updated the vendored `languagetests` pointer for `switch` coverage to include
+  `^^` visibility in unmatched `default` branches.
 
 ## 0.006000 - 2026-06-19
 
