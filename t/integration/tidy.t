@@ -580,7 +580,7 @@ my $pairlist_spread_tidy = Zuzu::Tidy->tidy(
 );
 like $pairlist_spread_tidy, qr/\.\.\.\{\{.*?\}\}/s,
 	'pairlist spread keeps doubled {{ ... }} delimiters intact';
-unlike $pairlist_spread_tidy, qr/\.\.\.\{\s*\n?\s*\{/,
+unlike $pairlist_spread_tidy, qr/\.\.\.\{\n/,
 	'pairlist spread is not split into a nested { { ... } } block';
 
 my $class_brace_tidy = Zuzu::Tidy->tidy(

@@ -97,7 +97,6 @@ sub tidy {
 		my $tidied = _tidy_code_chunk( $chunk, %opts );
 		$tidied = _restore_multiline_comments( $tidied, $comment_map );
 		$tidied = _apply_vertical_spacing_rules($tidied);
-		$tidied = _normalize_split_brace_literals($tidied);
 		$tidied = _normalize_split_sequence_literals($tidied);
 		$tidied = _strip_single_line_trailing_literal_commas($tidied);
 		my $parser = Zuzu::Parser->new;
@@ -160,6 +159,7 @@ sub _tidy_code_chunk {
 	my $brace_depth = 0;
 	my $inline_brace_depth = 0;
 	my @brace_kind_stack;
+	my @pairlist_body_stack;
 	my $line = '';
 	my @out_lines;
 	my $pending_indent = 1;
@@ -176,6 +176,11 @@ sub _tidy_code_chunk {
 		my $close_kind = ( $val eq '}' and @brace_kind_stack ) ? $brace_kind_stack[-1] : 'block';
 
 		if ( $val eq '}' and ( $close_kind eq 'block' or $close_kind eq 'expr_block' ) ) {
+			if ( @pairlist_body_stack and $pairlist_body_stack[-1][0] and $line =~ /\S/ and $line !~ /,\s*\z/ ) {
+				# Every pairlist entry, including the last, gets a trailing
+				# comma when the body is split one-entry-per-line below.
+				$line .= ',';
+			}
 			if ( $line =~ /\S/ ) {
 				push @out_lines, _rstrip($line);
 				$line = '';
@@ -205,6 +210,8 @@ sub _tidy_code_chunk {
 				: _is_expression_block_brace( \@tokens, $i ) ? 'expr_block'
 				: 'block';
 			push @brace_kind_stack, $kind;
+			my $is_pairlist_body = ( defined $tok->{_pairlist_half} and $tok->{_pairlist_half} eq 'open2' ) ? 1 : 0;
+			push @pairlist_body_stack, [ $is_pairlist_body, $paren_depth, $bracket_depth ];
 			$brace_depth++;
 			$inline_brace_depth++ if $is_inline;
 			if ( ! $is_inline ) {
@@ -223,12 +230,30 @@ sub _tidy_code_chunk {
 			$continuation_indent = 0;
 			next;
 		}
+		if (
+			$val eq ','
+			and @pairlist_body_stack
+			and $pairlist_body_stack[-1][0]
+			and $paren_depth == $pairlist_body_stack[-1][1]
+			and $bracket_depth == $pairlist_body_stack[-1][2]
+		) {
+			# Inside a pairlist body, each entry (including the last) is
+			# placed on its own line, separated by the literal commas
+			# already present in the source.
+			push @out_lines, _rstrip($line);
+			$line = '';
+			$pending_indent = 1;
+			$continuation_indent = 0;
+			next;
+		}
 		if ( $val eq '}' ) {
 			my $kind = @brace_kind_stack ? pop @brace_kind_stack : 'block';
+			pop @pairlist_body_stack if @pairlist_body_stack;
 			$just_closed_inline = 1 if $kind eq 'inline';
 			$brace_depth-- if $brace_depth > 0;
 			$inline_brace_depth-- if $kind eq 'inline' and $inline_brace_depth > 0;
-			if ( $kind eq 'block' or $kind eq 'expr_block' ) {
+			my $is_pairlist_close1 = ( defined $tok->{_pairlist_half} && $tok->{_pairlist_half} eq 'close1' ) ? 1 : 0;
+			if ( ( $kind eq 'block' or $kind eq 'expr_block' ) and ! $is_pairlist_close1 ) {
 				if ( $kind eq 'expr_block' ) {
 					if ( $next and $next->is_OP(';') ) {
 						$line .= ';';
@@ -344,37 +369,47 @@ sub _normalize_tokens {
 
 	for my $tok ( @tokens ) {
 		if ( $tok->is_OP('{{') ) {
-			push @out, Zuzu::Token->new(
+			my $open1 = Zuzu::Token->new(
 				type => 'OP',
 				value => '{',
 				file => $tok->file,
 				line => $tok->line,
 				col => $tok->col,
 			);
-			push @out, Zuzu::Token->new(
+			my $open2 = Zuzu::Token->new(
 				type => 'OP',
 				value => '{',
 				file => $tok->file,
 				line => $tok->line,
 				col => $tok->col,
 			);
+			# Pairlist delimiter halves are tagged so formatting decisions
+			# (inline-vs-block brace classification) never depend on
+			# guessing from surrounding context, which previously broke
+			# down for contexts such as `...{{ ... }}` spreads.
+			$open1->{_pairlist_half} = 'open1';
+			$open2->{_pairlist_half} = 'open2';
+			push @out, $open1, $open2;
 			next;
 		}
 		if ( $tok->is_OP('}}') ) {
-			push @out, Zuzu::Token->new(
+			my $close1 = Zuzu::Token->new(
 				type => 'OP',
 				value => '}',
 				file => $tok->file,
 				line => $tok->line,
 				col => $tok->col,
 			);
-			push @out, Zuzu::Token->new(
+			my $close2 = Zuzu::Token->new(
 				type => 'OP',
 				value => '}',
 				file => $tok->file,
 				line => $tok->line,
 				col => $tok->col,
 			);
+			$close1->{_pairlist_half} = 'close1';
+			$close2->{_pairlist_half} = 'close2';
+			push @out, $close1, $close2;
 			next;
 		}
 		push @out, $tok;
@@ -438,6 +473,13 @@ sub _need_space_before {
 		return 0;
 	}
 	if ( $v eq '}' and $pv eq '}' ) {
+		# Two genuinely independent adjacent closing braces (e.g. nested
+		# dict literals) need a space, since re-lexing "}}" with no space
+		# would produce a single pairlist-close token instead. The two
+		# halves of an actual split {{ ... }} pairlist delimiter must stay
+		# tight, since that is what they were before splitting.
+		return 0 if defined $tok->{_pairlist_half} and $tok->{_pairlist_half} eq 'close2'
+			and defined $prev->{_pairlist_half} and $prev->{_pairlist_half} eq 'close1';
 		return 1;
 	}
 
@@ -828,6 +870,17 @@ sub _is_inline_brace {
 	my ( $tokens, $i, $pair_for ) = @_;
 	return 0 if $i <= 0;
 
+	my $pairlist_half = $tokens->[$i]{_pairlist_half};
+	if ( defined $pairlist_half ) {
+		# The first half of a split {{ is always inline, so it never
+		# triggers its own newline/indent; the second half is always
+		# block-kind, which is what produces the indented pairlist body.
+		# This is independent of whatever token precedes the pairlist
+		# (e.g. a spread `...`), unlike the heuristics below.
+		return 1 if $pairlist_half eq 'open1';
+		return 0 if $pairlist_half eq 'open2';
+	}
+
 	my $prev = $tokens->[ $i - 1 ];
 	my $pv = defined $prev->value ? $prev->value : '';
 
@@ -1204,49 +1257,6 @@ sub _next_nonblank_line {
 	return undef;
 }
 
-sub _normalize_split_brace_literals {
-	my ( $src ) = @_;
-	my @lines = split /\n/, $src, -1;
-	my @out;
-
-	for ( my $i = 0; $i <= $#lines; $i++ ) {
-		my $line = $lines[$i];
-		if ( $line =~ /\{\{\s*\z/ and $i + 2 <= $#lines ) {
-			my $j = $i + 1;
-			while ( $j <= $#lines and $lines[$j] !~ /^\s*\};\s*\z/ ) {
-				$j++;
-			}
-			my ( $close_indent ) = $lines[$j] =~ /^(\s*)\};\s*\z/ if $j <= $#lines;
-			if (
-				$j <= $#lines
-				and $j > $i + 1
-				and defined $close_indent
-				and $lines[$j - 1] =~ /^\s*\}\s*\z/
-			) {
-				my @inner_lines = @lines[ $i + 1 .. $j - 2 ];
-				my $inner_joined = join ' ', map { my $t = $_; $t =~ s/^\s+//; $t =~ s/\s+\z//; $t } @inner_lines;
-				if ( $inner_joined =~ /,/ ) {
-					my ( $inner_indent ) = $lines[ $i + 1 ] =~ /^(\s*)/;
-					$inner_indent //= $close_indent . "\t";
-					my @parts = grep { $_ ne '' } map { my $p = $_; $p =~ s/^\s+//; $p =~ s/\s+\z//; $p } split /\s*,\s*/, $inner_joined;
-					push @out, $line;
-					for my $part ( @parts ) {
-						push @out, $inner_indent . $part . ',';
-					}
-					my $suffix = $lines[$j] =~ /;\s*\z/ ? ';' : '';
-					push @out, $close_indent . '}}' . $suffix;
-					$i = $j;
-					next;
-				}
-			}
-		}
-
-		push @out, $line;
-	}
-
-	return join "\n", @out;
-}
-
 sub _strip_single_line_trailing_literal_commas {
 	my ( $src ) = @_;
 	my @lines = split /\n/, $src, -1;
@@ -1261,6 +1271,37 @@ sub _strip_single_line_trailing_literal_commas {
 	}
 
 	return join "\n", @lines;
+}
+
+sub _find_matching_sequence_close {
+	# Depth-aware search for the close delimiter matching the open
+	# delimiter already consumed at the start of $after_open. Unlike a
+	# plain textual scan for the first occurrence of $close, this tracks
+	# nesting so an inner occurrence of the same bracket type (e.g. the
+	# index brackets in `async_lambdas[0]` nested inside an outer `[ ... ]`
+	# array literal) is not mistaken for the outer literal's close.
+	my ( $lines, $start_i, $after_open, $open, $close ) = @_;
+	my $depth = 1;
+
+	for my $j ( $start_i .. $#$lines ) {
+		my $text = $j == $start_i ? $after_open : $lines->[$j];
+		while ( $text =~ /(\Q$open\E|\Q$close\E)/g ) {
+			if ( $1 eq $open ) {
+				$depth++;
+			}
+			else {
+				$depth--;
+				if ( $depth == 0 ) {
+					my $end = pos($text);
+					my $before = substr( $text, 0, $end - length($1) );
+					my $after = substr( $text, $end );
+					return ( $j, $before, $after );
+				}
+			}
+		}
+	}
+
+	return ();
 }
 
 sub _normalize_split_sequence_literals {
@@ -1284,21 +1325,17 @@ sub _normalize_split_sequence_literals {
 		}
 
 		my $close = $close_for{$open};
-		if ( $after_open =~ /\Q$close\E/ ) {
+		my ( $j, $before_close, $after_close )
+			= _find_matching_sequence_close( \@lines, $i, $after_open, $open, $close );
+		if ( ! defined $j ) {
+			push @out, $line;
+			next;
+		}
+		if ( $j == $i ) {
 			push @out, $line;
 			next;
 		}
 
-		my $j = $i + 1;
-		while ( $j <= $#lines and $lines[$j] !~ /\Q$close\E/ ) {
-			$j++;
-		}
-		if ( $j > $#lines ) {
-			push @out, $line;
-			next;
-		}
-
-		my ( $before_close, $after_close ) = $lines[$j] =~ /^(.*)\Q$close\E(.*)\z/;
 		my @inner_chunks = ( $after_open );
 		push @inner_chunks, @lines[ $i + 1 .. $j - 1 ] if $j > $i + 1;
 		push @inner_chunks, $before_close;
