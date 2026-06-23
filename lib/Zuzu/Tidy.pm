@@ -150,6 +150,7 @@ sub _tidy_code_chunk {
 		push @tokens, $tok;
 	}
 	@tokens = _normalize_tokens(@tokens);
+	_tag_declaration_block_braces( \@tokens );
 
 	my %pair_for = _build_pair_map( \@tokens );
 
@@ -416,6 +417,90 @@ sub _normalize_tokens {
 	}
 
 	return @out;
+}
+
+sub _tag_declaration_block_braces {
+	# Marks the `{` that opens a class/trait/function/method body, even
+	# when separated from the keyword by a variable-length clause such as
+	# a return-type arrow (`-> Type`) or a trait list (`with A, B`). A
+	# fixed-distance backward look from the brace can't see far enough
+	# back to find the keyword in those cases, which used to leave
+	# declaration bodies classified as inline. This scans forward from
+	# each keyword instead, so the gap can be any length.
+	my ( $tokens ) = @_;
+
+	for my $i ( 0 .. $#$tokens ) {
+		my $tok = $tokens->[$i];
+		next if ! $tok->is_KW;
+		my $kw = $tok->value;
+
+		if ( $kw eq 'class' or $kw eq 'trait' ) {
+			my $k = $i + 1;
+			next if $k > $#$tokens or ! $tokens->[$k]->is_IDENT;
+			$k++;
+
+			my $changed = 1;
+			while ( $changed ) {
+				$changed = 0;
+				if (
+					$k <= $#$tokens and $tokens->[$k]->is_KW('extends')
+					and $k + 1 <= $#$tokens and $tokens->[ $k + 1 ]->is_IDENT
+				) {
+					$k += 2;
+					$changed = 1;
+				}
+				if ( $k <= $#$tokens and ( $tokens->[$k]->is_KW('with') or $tokens->[$k]->is_KW('but') ) ) {
+					my $j = $k + 1;
+					if ( $j <= $#$tokens and $tokens->[$j]->is_IDENT ) {
+						$j++;
+						while (
+							$j + 1 <= $#$tokens
+							and $tokens->[$j]->is_OP(',')
+							and $tokens->[ $j + 1 ]->is_IDENT
+						) {
+							$j += 2;
+						}
+						$k = $j;
+						$changed = 1;
+					}
+				}
+			}
+
+			$tokens->[$k]{_forced_block} = 1 if $k <= $#$tokens and $tokens->[$k]->is_OP('{');
+			next;
+		}
+
+		if ( $kw eq 'function' or $kw eq 'method' ) {
+			my $k = $i + 1;
+			$k++ if $k <= $#$tokens and $tokens->[$k]->is_IDENT;
+			next if $k > $#$tokens or ! $tokens->[$k]->is_OP('(');
+
+			my $depth = 0;
+			my $j = $k;
+			while ( $j <= $#$tokens ) {
+				$depth++ if $tokens->[$j]->is_OP('(');
+				if ( $tokens->[$j]->is_OP(')') ) {
+					$depth--;
+					last if $depth == 0;
+				}
+				$j++;
+			}
+			next if $j > $#$tokens;
+			$k = $j + 1;
+
+			if (
+				$k <= $#$tokens and $tokens->[$k]->is_OP
+				and ( $tokens->[$k]->value eq '->' or $tokens->[$k]->value eq '→' )
+			) {
+				$k++;
+				$k++ if $k <= $#$tokens and $tokens->[$k]->is_IDENT;
+			}
+
+			$tokens->[$k]{_forced_block} = 1 if $k <= $#$tokens and $tokens->[$k]->is_OP('{');
+		}
+	}
+
+	return;
 }
 
 sub _build_pair_map {
@@ -870,6 +955,8 @@ sub _is_inline_brace {
 	my ( $tokens, $i, $pair_for ) = @_;
 	return 0 if $i <= 0;
 
+	return 0 if $tokens->[$i]{_forced_block};
+
 	my $pairlist_half = $tokens->[$i]{_pairlist_half};
 	if ( defined $pairlist_half ) {
 		# The first half of a split {{ is always inline, so it never
@@ -1183,7 +1270,10 @@ sub _apply_vertical_spacing_rules {
 			}
 			if ( $len >= 5 ) {
 				$blank_before{ $close_block->{start} } = 1;
-				$blank_after{$i} = 1;
+				my $next_nonblank = _next_nonblank_line( \@lines, $i + 1 );
+				my $cuddles = defined $next_nonblank
+					&& $lines[$next_nonblank] =~ /^\s*(?:catch|else)\b/;
+				$blank_after{$i} = 1 if ! $cuddles;
 			}
 		}
 

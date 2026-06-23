@@ -587,35 +587,35 @@ my $class_brace_tidy = Zuzu::Tidy->tidy(
 	"class Record with Labelled{let String name:=\"x\"}\n",
 	filename => 'class-brace.zzs',
 );
-unlike $class_brace_tidy, qr/\{\s*let\b/,
+unlike $class_brace_tidy, qr/\{[ \t]*let\b/,
 	'class opening brace is followed by a newline, not an inline field declaration';
 
 my $function_brace_tidy = Zuzu::Tidy->tidy(
 	"function classify(Number n)->String{if(n>0){return \"pos\"}return \"non-pos\"}\n",
 	filename => 'function-brace.zzs',
 );
-unlike $function_brace_tidy, qr/\{\s*if\s*\(/,
+unlike $function_brace_tidy, qr/\{[ \t]*if[ \t]*\(/,
 	'function opening brace is followed by a newline, not an inline if statement';
 
 my $method_brace_tidy = Zuzu::Tidy->tidy(
 	"class Demo{method summary()->String{return \"ok\"}}\n",
 	filename => 'method-brace.zzs',
 );
-unlike $method_brace_tidy, qr/\{\s*return\b/,
+unlike $method_brace_tidy, qr/\{[ \t]*return\b/,
 	'method opening brace is followed by a newline, not an inline return';
 
 my $async_brace_tidy = Zuzu::Tidy->tidy(
 	"async function delayed_double(Number n)->Number{await{sleep(0.01)}return n*2}\n",
 	filename => 'async-brace.zzs',
 );
-unlike $async_brace_tidy, qr/\{\s*await\s*\{/,
+unlike $async_brace_tidy, qr/\{[ \t]*await[ \t]*\{/,
 	'async function opening brace is followed by a newline, not an inline await block';
 
 my $static_method_tidy = Zuzu::Tidy->tidy(
 	"class Builder{method summary()->String{return \"a\"}static method make()->Builder{return new Builder()}}\n",
 	filename => 'static-method.zzs',
 );
-unlike $static_method_tidy, qr/\}\s*static\s+method\b/,
+unlike $static_method_tidy, qr/\}[ \t]*static[ \t]+method\b/,
 	'closing a method body does not collapse onto the same line as the next static method declaration';
 
 my $try_catch_src = <<'SRC';
