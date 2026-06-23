@@ -288,6 +288,14 @@ sub _tidy_code_chunk {
 					# rather than `}\n, 4, );`).
 					next;
 				}
+				if ( $kind eq 'block' and $next and $next->is_OP(';') ) {
+					# A control construct (e.g. try/catch) used as an
+					# expression value, terminated by an explicit `;`:
+					# glue the semicolon to the closing } instead of
+					# stranding it alone on the next line.
+					$line .= ';';
+					$i++;
+				}
 				push @out_lines, _rstrip($line);
 				$line = '';
 				$pending_indent = 1;
