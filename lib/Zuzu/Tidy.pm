@@ -635,8 +635,19 @@ sub _need_space_before {
 		return 1;
 	}
 
-	return 0 if $NO_SPACE_BEFORE{$v} and $v ne ')' and $v ne ']';
-	return 0 if $NO_SPACE_AFTER{$pv} and $pv ne '(' and $pv ne '[';
+	if ( $v eq ':' and _is_switch_comparator_colon( $tokens, $i ) ) {
+		return 1;
+	}
+	if ( $pv eq ':' and _is_slice_colon( $tokens, $i - 1, $pair_for ) ) {
+		return 0;
+	}
+
+	# Guarded by is_OP so a string/binary-string literal whose decoded
+	# content happens to equal a punctuation operator (e.g. the literal
+	# string ":" in `text _ ":" _ item`) isn't mistaken for that
+	# operator and tightened against its neighbour.
+	return 0 if $tok->is_OP and $NO_SPACE_BEFORE{$v} and $v ne ')' and $v ne ']';
+	return 0 if $prev->is_OP and $NO_SPACE_AFTER{$pv} and $pv ne '(' and $pv ne '[';
 
 	if ( $v eq '(' or $v eq '[' ) {
 		if ( $pv eq ',' ) {
@@ -648,7 +659,7 @@ sub _need_space_before {
 		if ( $prev->is_KW and $CONTROL_KW{ $prev->value } ) {
 			return 1;
 		}
-		if ( $v eq '[' and $prev->is_OP and $pv ne '.' and $pv ne ')' and $pv ne ']' ) {
+		if ( $v eq '[' and $prev->is_OP and $pv ne '.' and $pv ne ')' and $pv ne ']' and $pv ne '}' ) {
 			return 1;
 		}
 		if ( $v eq '(' and $prev->is_IDENT and $i >= 2 ) {
@@ -709,6 +720,86 @@ sub _need_space_before {
 	}
 
 	return 1;
+}
+
+sub _enclosing_open_index {
+	# Returns the token index of the nearest enclosing unmatched
+	# `(`/`[`/`{` before position $i, or undef at the top level.
+	my ( $tokens, $i ) = @_;
+
+	my @stack;
+	for my $k ( 0 .. $i - 1 ) {
+		my $v = defined $tokens->[$k]->value ? $tokens->[$k]->value : '';
+		if ( $v eq '(' or $v eq '[' or $v eq '{' ) {
+			push @stack, $k;
+		}
+		elsif ( $v eq ')' or $v eq ']' or $v eq '}' ) {
+			pop @stack if @stack;
+		}
+	}
+
+	return @stack ? $stack[-1] : undef;
+}
+
+sub _is_switch_comparator_colon {
+	# The `:` that separates a switch subject expression from its
+	# comparator operator, e.g. `switch ( n mod 4 : = )`, reads better
+	# with a space on both sides, unlike every other use of `:` (case
+	# labels, dict keys, ternaries, slices), which stay tight. Detected
+	# by finding the nearest enclosing unmatched bracket: it must be a
+	# `(` opened directly by the `switch` keyword, not some deeper
+	# bracket (e.g. a slice inside the switch subject).
+	my ( $tokens, $i ) = @_;
+	return 0 if !$tokens->[$i]->is_OP(':');
+
+	my $open_i = _enclosing_open_index( $tokens, $i );
+	return 0 if !defined $open_i;
+	return 0 if !$tokens->[$open_i]->is_OP('(');
+	return 0 if $open_i == 0;
+	return 1 if $tokens->[ $open_i - 1 ]->is_KW('switch');
+
+	return 0;
+}
+
+sub _is_simple_slice_inner {
+	# True if the tokens between `[` and `]` look like a slice:
+	# zero or more `:`-separated parts, each either empty (an omitted
+	# bound, e.g. `[:2]`) or a single simple token.
+	my ( @inner ) = @_;
+
+	my @parts = ( [] );
+	for my $tok ( @inner ) {
+		if ( $tok->is_OP(':') ) {
+			push @parts, [];
+			next;
+		}
+		push @{ $parts[-1] }, $tok;
+	}
+	return 0 if @parts < 2;
+
+	for my $part ( @parts ) {
+		return 0 if @$part > 1;
+		return 0 if @$part == 1 and !_is_simple_token( $part->[0] );
+	}
+
+	return 1;
+}
+
+sub _is_slice_colon {
+	# A `:` directly inside `[ ... ]` that separates simple slice bounds,
+	# e.g. `text[1:2]`, stays tight on both sides, unlike a dict key's
+	# `:` (`{ a: 1 }`) or the switch comparator's `:`.
+	my ( $tokens, $i, $pair_for ) = @_;
+	return 0 if !$tokens->[$i]->is_OP(':');
+
+	my $open_i = _enclosing_open_index( $tokens, $i );
+	return 0 if !defined $open_i;
+	return 0 if !$tokens->[$open_i]->is_OP('[');
+	my $close_i = $pair_for->{$open_i};
+	return 0 if !defined $close_i;
+
+	my @inner = @{$tokens}[ $open_i + 1 .. $close_i - 1 ];
+	return _is_simple_slice_inner(@inner);
 }
 
 sub _is_module_path_slash {
@@ -906,6 +997,9 @@ sub _paren_needs_inner_space {
 		and $inner[0]->value eq '...'
 		and _is_simple_token( $inner[1] )
 	) {
+		return 0;
+	}
+	if ( $tokens->[$open_i]->is_OP('[') and _is_simple_slice_inner(@inner) ) {
 		return 0;
 	}
 

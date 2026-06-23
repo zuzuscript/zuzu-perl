@@ -658,4 +658,39 @@ my $index_call_tidy = Zuzu::Tidy->tidy(
 unlike $index_call_tidy, qr/\[\s*0\s*,?\s*\n/,
 	'a simple index expression is never split across a line break';
 
+## ------------------------------------------------------------------
+## Phase 5 whitespace rules: switch comparator spacing, access chains,
+## slices, and concatenation around punctuation literals.
+## ------------------------------------------------------------------
+
+my $switch_comparator_tidy = Zuzu::Tidy->tidy(
+	"switch(n mod 4: =){case 0:say \"a\" default:say \"b\"}\n",
+	filename => 'switch-comparator.zzs',
+);
+like $switch_comparator_tidy, qr/switch \( n mod 4 : = \) \{/,
+	'switch comparator marker keeps readable spacing around :';
+
+my $access_chain_tidy = Zuzu::Tidy->tidy(
+	"let x:=data{users}[0]{roles};\n",
+	filename => 'access-chain.zzs',
+);
+like $access_chain_tidy, qr/\Alet x := data\{users\}\[0\]\{roles\};\n/,
+	'chained dict/index access stays tight with no inserted spaces';
+
+my $slice_tidy = Zuzu::Tidy->tidy(
+	"let m:=text[1:2];\nlet n:=bytes[2:2];\nlet p:=arr[:2];\nlet q:=arr[1:];\n",
+	filename => 'slice.zzs',
+);
+like $slice_tidy, qr/\Alet m := text\[1:2\];\n/, 'keeps a simple slice compact';
+like $slice_tidy, qr/\nlet n := bytes\[2:2\];\n/, 'keeps a binary-string slice compact';
+like $slice_tidy, qr/\nlet p := arr\[:2\];\n/, 'keeps a slice with an omitted start compact';
+like $slice_tidy, qr/\nlet q := arr\[1:\];\n/, 'keeps a slice with an omitted end compact';
+
+my $concat_punct_tidy = Zuzu::Tidy->tidy(
+	qq{let r := text _":" _ item;\n},
+	filename => 'concat-punct.zzs',
+);
+like $concat_punct_tidy, qr/\Alet r := text _ ":" _ item;\n/,
+	'spaces the concatenation operator consistently around a punctuation string literal';
+
 done_testing;
