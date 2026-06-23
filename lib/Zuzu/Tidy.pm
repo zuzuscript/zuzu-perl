@@ -274,6 +274,20 @@ sub _tidy_code_chunk {
 					$pending_indent = 1;
 					next;
 				}
+				if (
+					( $kind eq 'block' or $kind eq 'expr_block' )
+					and $paren_depth > 0
+					and $next
+					and $next->is_OP
+					and ( $next->value eq ',' or $next->value eq ')' )
+				) {
+					# A callback/anonymous-function body that is itself a
+					# call argument: keep its closing } glued to the `,`
+					# or `)` that follows, instead of stranding the rest
+					# of the argument list on its own line (`}, 4 );`
+					# rather than `}\n, 4, );`).
+					next;
+				}
 				push @out_lines, _rstrip($line);
 				$line = '';
 				$pending_indent = 1;
@@ -1217,11 +1231,20 @@ sub _apply_vertical_spacing_rules {
 
 	my ( @open_for_line, @close_for_line );
 	my @stack;
+	my $paren_bracket_depth = 0;
 
 	for my $i ( 0 .. $#lines ) {
 		my $trimmed = $lines[$i];
 		$trimmed =~ s/^\s+//;
 		$trimmed =~ s/\s+\z//;
+
+		# Track paren/bracket nesting across lines (approximate: doesn't
+		# account for parens inside string literals) so a brace opened
+		# while still inside an unclosed `(`/`[` -- e.g. a callback body
+		# passed as a call argument -- can be told apart from a real
+		# top-level statement block below.
+		my $opens = () = $trimmed =~ /[(\[]/g;
+		my $closes = () = $trimmed =~ /[)\]]/g;
 
 		if ( $trimmed =~ /\{\z/ ) {
 			my $kind = 'block';
@@ -1232,11 +1255,14 @@ sub _apply_vertical_spacing_rules {
 				$kind = 'statement_block';
 			}
 			push @stack, {
-				kind  => $kind,
-				start => $i,
+				kind             => $kind,
+				start            => $i,
+				is_call_argument => ( $paren_bracket_depth + $opens - $closes > 0 ) ? 1 : 0,
 			};
 			$open_for_line[$i] = $stack[-1];
 		}
+
+		$paren_bracket_depth += $opens - $closes;
 
 		if ( $trimmed =~ /^\}/ ) {
 			next if ! @stack;
@@ -1268,7 +1294,7 @@ sub _apply_vertical_spacing_rules {
 					$blank_after{$i} = 1;
 				}
 			}
-			if ( $len >= 5 ) {
+			if ( $len >= 5 and ! $close_block->{is_call_argument} ) {
 				$blank_before{ $close_block->{start} } = 1;
 				my $next_nonblank = _next_nonblank_line( \@lines, $i + 1 );
 				my $cuddles = defined $next_nonblank
