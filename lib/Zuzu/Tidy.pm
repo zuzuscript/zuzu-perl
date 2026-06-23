@@ -36,6 +36,16 @@ my %UNARY_PREFIX_OP = map { $_ => 1 } qw(
 my %NO_SPACE_BEFORE = map { $_ => 1 } ( ',', ';', ')', ']', '}', '⌋', '⌉', '.', ':' );
 my %NO_SPACE_AFTER  = map { $_ => 1 } ( '(', '[', '{', '⌊', '⌈', '.' );
 my %CONTROL_KW = map { $_ => 1 } qw( if else while for switch catch unless );
+
+# Delimiter types that can open/close a comma-separated sequence body
+# (array/dict/pairlist literal, set/bag/guillemet-set literal, or a
+# call/parameter argument list). << and « are ambiguous with the binary
+# "shift" operator of the same spelling, so they (and their closes >> and
+# ») only engage this tracking when _build_pair_map judged them to be a
+# genuine literal delimiter -- i.e. when they have an entry in %pair_for.
+my %_SEQUENCE_OPEN  = ( '(' => 1, '[' => 1, '{' => 1, '<<' => 1, '<<<' => 1, '«' => 1 );
+my %_SEQUENCE_CLOSE = ( ')' => 1, ']' => 1, '>>' => 1, '>>>' => 1, '»' => 1 );
+my %_AMBIGUOUS_ANGLE = ( '<<' => 1, '«' => 1, '>>' => 1, '»' => 1 );
 my %CANONICAL_OPERATOR_SPELLING = (
 	'*'            => '×',
 	'/'            => '÷',
@@ -98,7 +108,6 @@ sub tidy {
 		$tidied = _restore_multiline_comments( $tidied, $comment_map );
 		$tidied = _apply_vertical_spacing_rules($tidied);
 		$tidied = _normalize_split_sequence_literals($tidied);
-		$tidied = _strip_single_line_trailing_literal_commas($tidied);
 		my $parser = Zuzu::Parser->new;
 		eval {
 			$parser->parse(
@@ -153,14 +162,16 @@ sub _tidy_code_chunk {
 	_tag_declaration_block_braces( \@tokens );
 
 	my %pair_for = _build_pair_map( \@tokens );
+	_tag_trailing_comma_sequences( \@tokens, \%pair_for );
 
 	my $indent = 0;
 	my $paren_depth = 0;
 	my $bracket_depth = 0;
 	my $brace_depth = 0;
 	my $inline_brace_depth = 0;
+	my $angle_depth = 0;
 	my @brace_kind_stack;
-	my @pairlist_body_stack;
+	my @sequence_stack;
 	my $line = '';
 	my @out_lines;
 	my $pending_indent = 1;
@@ -175,11 +186,21 @@ sub _tidy_code_chunk {
 		my $just_closed_inline = 0;
 
 		my $close_kind = ( $val eq '}' and @brace_kind_stack ) ? $brace_kind_stack[-1] : 'block';
+		my $is_other_sequence_close = (
+			$_SEQUENCE_CLOSE{$val}
+			and $val ne '}'
+			and ( ! $_AMBIGUOUS_ANGLE{$val} or exists $pair_for{$i} )
+			and @sequence_stack
+			and $sequence_stack[-1]
+		);
 
-		if ( $val eq '}' and ( $close_kind eq 'block' or $close_kind eq 'expr_block' ) ) {
-			if ( @pairlist_body_stack and $pairlist_body_stack[-1][0] and $line =~ /\S/ and $line !~ /,\s*\z/ ) {
-				# Every pairlist entry, including the last, gets a trailing
-				# comma when the body is split one-entry-per-line below.
+		if (
+			( $val eq '}' and ( $close_kind eq 'block' or $close_kind eq 'expr_block' ) )
+			or $is_other_sequence_close
+		) {
+			if ( @sequence_stack and $sequence_stack[-1] and $line =~ /\S/ and $line !~ /,\s*\z/ ) {
+				# Every entry, including the last, gets a trailing comma
+				# when the body is split one-entry-per-line below.
 				$line .= ',';
 			}
 			if ( $line =~ /\S/ ) {
@@ -205,17 +226,38 @@ sub _tidy_code_chunk {
 			$line .= ' ' if $need_before and $line =~ /\S/ and $line !~ /[ \t]\z/;
 		$line .= $emit_val;
 
-		if ( $val eq '{' ) {
-			my $is_inline = _is_inline_brace( \@tokens, $i, \%pair_for );
-			my $kind = $is_inline ? 'inline'
-				: _is_expression_block_brace( \@tokens, $i ) ? 'expr_block'
-				: 'block';
-			push @brace_kind_stack, $kind;
-			my $is_pairlist_body = ( defined $tok->{_pairlist_half} and $tok->{_pairlist_half} eq 'open2' ) ? 1 : 0;
-			push @pairlist_body_stack, [ $is_pairlist_body, $paren_depth, $bracket_depth ];
-			$brace_depth++;
-			$inline_brace_depth++ if $is_inline;
-			if ( ! $is_inline ) {
+		if ( $_SEQUENCE_OPEN{$val} and ( ! $_AMBIGUOUS_ANGLE{$val} or exists $pair_for{$i} ) ) {
+			my $is_inline = 1;
+			my $kind = 'inline';
+			if ( $val eq '{' ) {
+				$is_inline = _is_inline_brace( \@tokens, $i, \%pair_for );
+				$kind = $is_inline ? 'inline'
+					: _is_expression_block_brace( \@tokens, $i ) ? 'expr_block'
+					: 'block';
+				push @brace_kind_stack, $kind;
+			}
+
+			my $is_pairlist_body = ( $val eq '{' and defined $tok->{_pairlist_half} and $tok->{_pairlist_half} eq 'open2' ) ? 1 : 0;
+			my $is_sequence_body = $is_pairlist_body || ( $tok->{_force_sequence} ? 1 : 0 );
+			push @sequence_stack, $is_sequence_body;
+
+			if ( $val eq '(' ) {
+				$paren_depth++;
+			}
+			elsif ( $val eq '[' ) {
+				$bracket_depth++;
+			}
+			elsif ( $val eq '{' ) {
+				$brace_depth++;
+				$inline_brace_depth++ if $is_inline;
+			}
+			else {
+				# << <<< «
+				$angle_depth++;
+			}
+
+			my $forces_newline = ( $val eq '{' ) ? ( ! $is_inline ) : ( $is_sequence_body ? 1 : 0 );
+			if ( $forces_newline ) {
 				push @out_lines, _rstrip($line);
 				$line = '';
 				$indent++;
@@ -231,16 +273,12 @@ sub _tidy_code_chunk {
 			$continuation_indent = 0;
 			next;
 		}
-		if (
-			$val eq ','
-			and @pairlist_body_stack
-			and $pairlist_body_stack[-1][0]
-			and $paren_depth == $pairlist_body_stack[-1][1]
-			and $bracket_depth == $pairlist_body_stack[-1][2]
-		) {
-			# Inside a pairlist body, each entry (including the last) is
-			# placed on its own line, separated by the literal commas
-			# already present in the source.
+		if ( $val eq ',' and @sequence_stack and $sequence_stack[-1] ) {
+			# Inside any sequence body (pairlist, dict, array, set, bag,
+			# guillemet-set, or argument/parameter list) that must be
+			# rendered one-item-per-line, each entry -- including the
+			# last -- is placed on its own line, separated by the literal
+			# commas already present in the source.
 			push @out_lines, _rstrip($line);
 			$line = '';
 			$pending_indent = 1;
@@ -249,12 +287,17 @@ sub _tidy_code_chunk {
 		}
 		if ( $val eq '}' ) {
 			my $kind = @brace_kind_stack ? pop @brace_kind_stack : 'block';
-			pop @pairlist_body_stack if @pairlist_body_stack;
-			$just_closed_inline = 1 if $kind eq 'inline';
+			my $is_sequence_body = @sequence_stack ? pop @sequence_stack : 0;
+			# A forced dict literal's } ends a value, not a statement
+			# block, so (like pairlist close2, which is already 'inline'
+			# kind) it must remain eligible for the same generic
+			# end-of-value auto-semicolon treatment that _needs_auto_semicolon
+			# otherwise blanket-excludes for 'block'/'expr_block' closes.
+			$just_closed_inline = 1 if $kind eq 'inline' or $is_sequence_body;
 			$brace_depth-- if $brace_depth > 0;
 			$inline_brace_depth-- if $kind eq 'inline' and $inline_brace_depth > 0;
 			my $is_pairlist_close1 = ( defined $tok->{_pairlist_half} && $tok->{_pairlist_half} eq 'close1' ) ? 1 : 0;
-			if ( ( $kind eq 'block' or $kind eq 'expr_block' ) and ! $is_pairlist_close1 ) {
+			if ( ( $kind eq 'block' or $kind eq 'expr_block' ) and ! $is_pairlist_close1 and ! $is_sequence_body ) {
 				if ( $kind eq 'expr_block' ) {
 					if ( $next and $next->is_OP(';') ) {
 						$line .= ';';
@@ -276,19 +319,26 @@ sub _tidy_code_chunk {
 				}
 				if (
 					( $kind eq 'block' or $kind eq 'expr_block' )
-					and $paren_depth > 0
+					and ( $paren_depth > 0 or $bracket_depth > 0 )
 					and $next
 					and $next->is_OP
-					and ( $next->value eq ',' or $next->value eq ')' )
+					and ( $next->value eq ',' or $next->value eq ')' or $next->value eq ']' )
 				) {
 					# A callback/anonymous-function body that is itself a
-					# call argument: keep its closing } glued to the `,`
-					# or `)` that follows, instead of stranding the rest
-					# of the argument list on its own line (`}, 4 );`
-					# rather than `}\n, 4, );`).
+					# call argument or array item: keep its closing } glued
+					# to the `,`, `)`, or `]` that follows, instead of
+					# stranding the rest of the argument list or array on
+					# its own line (`}, 4 );` rather than `}\n, 4, );`).
+					# Falling through without flushing here, rather than
+					# consuming $next directly, lets that token's own
+					# normal handling run on the next iteration -- so if
+					# the enclosing sequence is itself forced
+					# one-item-per-line, the generic comma separator (or
+					# the enclosing close's own pre-emission flush) still
+					# fires for it exactly as for every other item.
 					next;
 				}
-				if ( $kind eq 'block' and $next and $next->is_OP(';') ) {
+				if ( $kind eq 'block' and $next and $next->is_OP(';') and ! ( @sequence_stack and $sequence_stack[-1] ) ) {
 					# A control construct (e.g. try/catch) used as an
 					# expression value, terminated by an explicit `;`:
 					# glue the semicolon to the closing } instead of
@@ -302,6 +352,26 @@ sub _tidy_code_chunk {
 				next;
 			}
 		}
+		elsif ( $_SEQUENCE_CLOSE{$val} and ( ! $_AMBIGUOUS_ANGLE{$val} or exists $pair_for{$i} ) ) {
+			# A forced sequence's own closing delimiter never forces a new
+			# line to start for whatever follows it (unlike the pre-emission
+			# flush above, which only dedents the close itself onto its own
+			# line). Falling through lets the close glue naturally to a
+			# following `,`/`)`/`;` exactly as an ordinary, non-forced close
+			# already does, and lets the bottom-of-loop auto-semicolon check
+			# supply a `;` when this is the last token of a statement.
+			pop @sequence_stack if @sequence_stack;
+			if ( $val eq ')' ) {
+				$paren_depth-- if $paren_depth > 0;
+			}
+			elsif ( $val eq ']' ) {
+				$bracket_depth-- if $bracket_depth > 0;
+			}
+			else {
+				# >> >>> »
+				$angle_depth-- if $angle_depth > 0;
+			}
+		}
 
 		# wrap long lines conservatively at commas and binary operators.
 		my $col = _visual_length($line);
@@ -313,20 +383,7 @@ sub _tidy_code_chunk {
 			$continuation_indent = 4;
 		}
 
-		if ( $val eq '(' ) {
-			$paren_depth++;
-		}
-		elsif ( $val eq ')' ) {
-			$paren_depth-- if $paren_depth > 0;
-		}
-		elsif ( $val eq '[' ) {
-			$bracket_depth++;
-		}
-		elsif ( $val eq ']' ) {
-			$bracket_depth-- if $bracket_depth > 0;
-		}
-
-		if ( $next and _needs_auto_semicolon( $tok, $next, $paren_depth, $bracket_depth, $brace_depth, $inline_brace_depth, $just_closed_inline ) ) {
+		if ( $next and _needs_auto_semicolon( $tok, $next, $paren_depth, $bracket_depth, $brace_depth, $inline_brace_depth, $just_closed_inline, $angle_depth ) ) {
 			$line .= ';';
 			push @out_lines, _rstrip($line);
 			$line = '';
@@ -525,32 +582,83 @@ sub _tag_declaration_block_braces {
 	return;
 }
 
+my %_PAIR_CLOSE_FOR_OPEN = (
+	'(' => ')', '[' => ']', '{' => '}', '⌊' => '⌋', '⌈' => '⌉',
+	'<<' => '>>', '<<<' => '>>>', '«' => '»',
+);
+my %_PAIR_OPEN_FOR_CLOSE = reverse %_PAIR_CLOSE_FOR_OPEN;
+
 sub _build_pair_map {
 	my ( $tokens ) = @_;
 	my @stack;
 	my %pair;
 
 	for my $i ( 0 .. $#$tokens ) {
-		my $v = defined $tokens->[$i]->value ? $tokens->[$i]->value : '';
-		if ( $v eq '(' or $v eq '[' or $v eq '{' or $v eq '⌊' or $v eq '⌈' ) {
+		# Guarded by is_OP so a string/binary-string literal whose decoded
+		# content happens to equal a bracket character (e.g. the literal
+		# string "(" in `left:"("`) isn't mistaken for that bracket.
+		next if ! $tokens->[$i]->is_OP;
+		my $v = $tokens->[$i]->value;
+
+		# << and « are genuinely dual-use: the real parser treats them as a
+		# set/guillemet-set literal opener in primary/operand position, but
+		# they also have real binary-operator ("shift") precedence in infix
+		# position (see _Impl.pm's precedence table). Only push them as
+		# pairable openers when they're in operand position -- i.e. NOT
+		# immediately after a token that could end an expression -- so a
+		# shift expression never corrupts the stack for surrounding
+		# brackets. <<< (bag) has no such binary-operator meaning and is
+		# always pushed.
+		if ( ( $v eq '<<' or $v eq '«' ) and $i > 0 and _can_end_statement( $tokens->[ $i - 1 ] ) ) {
+			next;
+		}
+
+		if ( $_PAIR_CLOSE_FOR_OPEN{$v} ) {
 			push @stack, [ $v, $i ];
 			next;
 		}
-		if ( $v eq ')' or $v eq ']' or $v eq '}' or $v eq '⌋' or $v eq '⌉' ) {
+		if ( $_PAIR_OPEN_FOR_CLOSE{$v} ) {
 			next if ! @stack;
-			my $entry = pop @stack;
-			my ( $open, $open_i ) = @$entry;
-			next if ( $open eq '(' and $v ne ')' )
-				or ( $open eq '[' and $v ne ']' )
-				or ( $open eq '{' and $v ne '}' )
-				or ( $open eq '⌊' and $v ne '⌋' )
-				or ( $open eq '⌈' and $v ne '⌉' );
+			my ( $open, $open_i ) = @{ $stack[-1] };
+			next if $_PAIR_CLOSE_FOR_OPEN{$open} ne $v;
+			pop @stack;
 			$pair{$open_i} = $i;
 			$pair{$i} = $open_i;
 		}
 	}
 
 	return %pair;
+}
+
+sub _tag_trailing_comma_sequences {
+	# Marks an open delimiter of a comma-separated sequence (call/parameter
+	# argument list, array, dict, set, bag, or guillemet-set literal) when
+	# the token immediately before its matching close is a literal comma.
+	# A literal trailing comma is a strong signal that the sequence should
+	# be rendered one item per line, so this is decided once up front (like
+	# _tag_declaration_block_braces) rather than guessed at format time.
+	# Bare { is included for dict literals; pairlist {{ ... }} is left
+	# alone since it is already unconditionally forced via _pairlist_half.
+	my ( $tokens, $pair_for ) = @_;
+
+	for my $i ( 0 .. $#$tokens ) {
+		my $tok = $tokens->[$i];
+		next if ! $tok->is_OP;
+		my $v = $tok->value;
+		next if $v ne '(' and $v ne '[' and $v ne '<<' and $v ne '<<<' and $v ne '«' and $v ne '{';
+		next if $v eq '{' and defined $tok->{_pairlist_half};
+
+		next if ! exists $pair_for->{$i};
+		my $close_i = $pair_for->{$i};
+		next if $close_i <= $i + 1;
+
+		my $before_close = $tokens->[ $close_i - 1 ];
+		next if ! $before_close->is_OP(',');
+
+		$tok->{_force_sequence} = 1;
+	}
+
+	return;
 }
 
 sub _need_space_before {
@@ -1049,7 +1157,7 @@ sub _is_simple_token {
 }
 
 sub _needs_auto_semicolon {
-	my ( $tok, $next, $paren_depth, $bracket_depth, $brace_depth, $inline_brace_depth, $just_closed_inline ) = @_;
+	my ( $tok, $next, $paren_depth, $bracket_depth, $brace_depth, $inline_brace_depth, $just_closed_inline, $angle_depth ) = @_;
 	return 0 if $tok->is_OP and ( $tok->value eq ';' or $tok->value eq '{' );
 	return 0 if $tok->is_OP and $tok->value eq '}' and ! $just_closed_inline;
 	return 0 if $tok->is_OP and $tok->value eq ':';
@@ -1058,7 +1166,7 @@ sub _needs_auto_semicolon {
 		return 0;
 	}
 	return 0 if $next->is_OP and ( $next->value eq ';' or $next->value eq ')' or $next->value eq ']' or $next->value eq '⌋' or $next->value eq '⌉' or $next->value eq ',' or $next->value eq ':' );
-	return 0 if $paren_depth > 0 or $bracket_depth > 0;
+	return 0 if $paren_depth > 0 or $bracket_depth > 0 or ( $angle_depth // 0 ) > 0;
 	return 0 if $inline_brace_depth > 0;
 	return 1 if $next->is_OP and $next->value eq '}' and _can_end_statement($tok);
 	return 1 if $next->is_KW('else');
@@ -1072,6 +1180,7 @@ sub _is_inline_brace {
 	return 0 if $i <= 0;
 
 	return 0 if $tokens->[$i]{_forced_block};
+	return 0 if $tokens->[$i]{_force_sequence};
 
 	my $pairlist_half = $tokens->[$i]{_pairlist_half};
 	if ( defined $pairlist_half ) {
@@ -1381,7 +1490,7 @@ sub _apply_vertical_spacing_rules {
 		my $open_block = $open_for_line[$i];
 		if ($open_block) {
 			my $kind = $open_block->{kind};
-			if ( $kind eq 'function' or $kind eq 'method' ) {
+			if ( ( $kind eq 'function' or $kind eq 'method' ) and ! $open_block->{is_call_argument} ) {
 				$blank_before{$i} = 1;
 			}
 		}
@@ -1390,7 +1499,7 @@ sub _apply_vertical_spacing_rules {
 		if ($close_block) {
 			my $kind = $close_block->{kind};
 			my $len = $close_block->{end} - $close_block->{start} + 1;
-			if ( $kind eq 'function' or $kind eq 'method' ) {
+			if ( ( $kind eq 'function' or $kind eq 'method' ) and ! $close_block->{is_call_argument} ) {
 				my $next_nonblank = _next_nonblank_line( \@lines, $i + 1 );
 				if ( defined $next_nonblank and $lines[$next_nonblank] !~ /^\s*\}/ ) {
 					$blank_after{$i} = 1;
@@ -1475,22 +1584,6 @@ sub _next_nonblank_line {
 	return undef;
 }
 
-sub _strip_single_line_trailing_literal_commas {
-	my ( $src ) = @_;
-	my @lines = split /\n/, $src, -1;
-	for my $line ( @lines ) {
-		next if $line !~ /[\{\[<«]/;
-		$line =~ s/,\s*\}\}(?=\s*[;)\],}]|\s*\z)/ }}/g;
-		$line =~ s/,\s*\}(?=\s*[;)\],}]|\s*\z)/ }/g;
-		$line =~ s/,\s*\](?=\s*[;),\]}]|\s*\z)/ ]/g;
-		$line =~ s/,\s*»(?=\s*[;),\]}]|\s*\z)/ »/g;
-		$line =~ s/,\s*>>>(?=\s*[;),\]}]|\s*\z)/ >>>/g;
-		$line =~ s/,\s*>>(?=\s*[;),\]}]|\s*\z)/ >>/g;
-	}
-
-	return join "\n", @lines;
-}
-
 sub _find_matching_sequence_close {
 	# Depth-aware search for the close delimiter matching the open
 	# delimiter already consumed at the start of $after_open. Unlike a
@@ -1522,6 +1615,55 @@ sub _find_matching_sequence_close {
 	return ();
 }
 
+sub _split_top_level_commas {
+	# Splits already-joined inner sequence content on commas, but only at
+	# bracket depth 0 -- a comma inside a nested array/call/set/etc item
+	# (e.g. reconstructing a sequence whose items are themselves bracketed
+	# sub-expressions) must stay with that item rather than being treated
+	# as another top-level separator.
+	my ( $text ) = @_;
+	my @parts;
+	my $depth = 0;
+	my $current = '';
+	my $pos = 0;
+	my $len = length $text;
+
+	while ( $pos < $len ) {
+		my $three = substr( $text, $pos, 3 );
+		if ( $three eq '<<<' or $three eq '>>>' ) {
+			$depth += $three eq '<<<' ? 1 : -1;
+			$current .= $three;
+			$pos += 3;
+			next;
+		}
+		my $two = substr( $text, $pos, 2 );
+		if ( $two eq '<<' or $two eq '>>' ) {
+			$depth += $two eq '<<' ? 1 : -1;
+			$current .= $two;
+			$pos += 2;
+			next;
+		}
+		my $ch = substr( $text, $pos, 1 );
+		if ( $ch eq '(' or $ch eq '[' or $ch eq '{' or $ch eq '«' or $ch eq '⌊' or $ch eq '⌈' ) {
+			$depth++;
+		}
+		elsif ( $ch eq ')' or $ch eq ']' or $ch eq '}' or $ch eq '»' or $ch eq '⌋' or $ch eq '⌉' ) {
+			$depth--;
+		}
+		elsif ( $ch eq ',' and $depth == 0 ) {
+			push @parts, $current;
+			$current = '';
+			$pos++;
+			next;
+		}
+		$current .= $ch;
+		$pos++;
+	}
+	push @parts, $current if $current ne '';
+
+	return @parts;
+}
+
 sub _normalize_split_sequence_literals {
 	my ( $src ) = @_;
 	my @lines = split /\n/, $src, -1;
@@ -1537,7 +1679,11 @@ sub _normalize_split_sequence_literals {
 	for ( my $i = 0; $i <= $#lines; $i++ ) {
 		my $line = $lines[$i];
 		my ( $prefix, $open, $after_open ) = $line =~ /^(.*?(?::=|[\(\[,])\s*)(<<<|<<|«|\[)(.*)\z/;
-		if ( ! defined $open ) {
+		if ( ! defined $open or $after_open !~ /\S/ ) {
+			# Nothing after the open delimiter on this line means it was
+			# already split (e.g. by the trailing-comma-forces-multi-line
+			# mechanism in _tidy_code_chunk); reprocessing it would flatten
+			# the already-correct nested structure onto fewer lines.
 			push @out, $line;
 			next;
 		}
@@ -1569,7 +1715,7 @@ sub _normalize_split_sequence_literals {
 			$p =~ s/^\s+//;
 			$p =~ s/\s+\z//;
 			$p;
-		} split /\s*,\s*/, $inner_joined;
+		} _split_top_level_commas($inner_joined);
 		if ( ! @parts ) {
 			push @out, $line;
 			next;

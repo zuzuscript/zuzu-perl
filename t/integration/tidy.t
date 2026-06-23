@@ -249,8 +249,8 @@ like(
 );
 like(
 	$spacing_tidy,
-	qr/\nlet cfg := \{ pretty: false, sort_keys: false, color: false, quiet: false \};\n/,
-	'removes trailing comma for single-line dict or bag literals',
+	qr/\nlet cfg := \{\n\tpretty: false,\n\tsort_keys: false,\n\tcolor: false,\n\tquiet: false,\n\};\n/,
+	'forces multi-line dict literal when source has a trailing comma',
 );
 like $spacing_tidy, qr/\nlet range_arr := \[ 1 \.\.\. 3 \];\n/,
 	'keeps array ranges formatted as ranges';
@@ -258,24 +258,64 @@ like $spacing_tidy, qr/\nlet range_set := << 1 \.\.\. 3 >>;\n/,
 	'keeps set ranges formatted as ranges';
 like $spacing_tidy, qr/\nlet range_bag := <<< 1 \.\.\. 3 >>>;\n/,
 	'keeps bag ranges formatted as ranges';
-like $spacing_tidy, qr/\nlet arr := \[ 1, 2, 3 \];\n/, 'removes trailing comma for single-line arrays';
+like $spacing_tidy, qr/\nlet arr := \[\n\t1,\n\t2,\n\t3,\n\];\n/,
+	'forces multi-line array when source has a trailing comma';
 like(
 	$spacing_tidy,
 	qr/\nlet arr_force := \[\n\ta{40},\n\tb{40},\n\tc{40},\n\td{40},\n\];\n/,
 	'formats split arrays one item per line with trailing comma',
 );
-like $spacing_tidy, qr/\nlet set_single := << 1, 2, 3 >>;\n/, 'removes trailing comma for single-line sets';
+like $spacing_tidy, qr/\nlet set_single := <<\n\t1,\n\t2,\n\t3,\n>>;\n/,
+	'forces multi-line set when source has a trailing comma';
 like(
 	$spacing_tidy,
 	qr/\nlet set_force := <<\n\ta{40},\n\tb{40},\n\tc{40},\n\td{40},\n>>;\n/,
 	'formats split sets one item per line with trailing comma',
 );
-like $spacing_tidy, qr/\nlet bag_single := <<< 1, 2, 3 >>>;\n/, 'removes trailing comma for single-line bags';
+like $spacing_tidy, qr/\nlet bag_single := <<<\n\t1,\n\t2,\n\t3,\n>>>;\n/,
+	'forces multi-line bag when source has a trailing comma';
 like(
 	$spacing_tidy,
 	qr/\nlet bag_force := <<<\n\ta{40},\n\tb{40},\n\tc{40},\n\td{40},\n>>>;?\n/,
 	'formats split bags one item per line with trailing comma',
 );
+
+my $trailing_comma_src = <<'SRC';
+function declares(a,b,){return a}
+let single_arg:=foo(1,)
+let single_arr:=[1,]
+let no_trailing:=foo(1,2,3)
+let nested_force:=[[1,2,],[3,4,],]
+let call_args:=foo(1,2,3,)
+let shifted:=a<<b
+let mixed:=[a<<b,c]
+SRC
+my $trailing_comma_tidy = Zuzu::Tidy->tidy( $trailing_comma_src, filename => 'trailing-comma.zzs' );
+
+like $trailing_comma_tidy,
+	qr/\Afunction declares \(\n\ta,\n\tb,\n\) \{/,
+	'forces multi-line declaration parameter list when source has a trailing comma';
+like $trailing_comma_tidy,
+	qr/\nlet single_arg := foo\(\n\t1,\n\);\n/,
+	'forces multi-line call args for a single-item trailing-comma argument list';
+like $trailing_comma_tidy,
+	qr/\nlet single_arr := \[\n\t1,\n\];\n/,
+	'forces multi-line array for a single-item trailing-comma array literal';
+like $trailing_comma_tidy,
+	qr/\nlet no_trailing := foo\( 1, 2, 3 \);\n/,
+	'a sequence without a trailing comma is unaffected and stays single-line';
+like $trailing_comma_tidy,
+	qr/\nlet nested_force := \[\n\t\[\n\t\t1,\n\t\t2,\n\t\],\n\t\[\n\t\t3,\n\t\t4,\n\t\],\n\];\n/,
+	'nested forced sequences each split and indent independently';
+like $trailing_comma_tidy,
+	qr/\nlet call_args := foo\(\n\t1,\n\t2,\n\t3,\n\);\n/,
+	'forces multi-line call argument list when source has a trailing comma';
+like $trailing_comma_tidy,
+	qr/\nlet shifted := a << b;\n/,
+	'<< used as a genuine binary shift operator is spaced normally and not split';
+like $trailing_comma_tidy,
+	qr/\nlet mixed := \[ a << b, c \];\n/,
+	'a binary shift expression as a non-trailing-comma array item does not confuse bracket matching';
 
 my $unpack_tidy = Zuzu::Tidy->tidy(
 	q{let {host,"for":for_id,Number port:=1234,`user-${suffix}`:String user_id,(key): value but weak}:=opts},
@@ -332,8 +372,8 @@ like $current_syntax_tidy, qr/\nlet ceiled := ⌈value \+ 0\.2⌉;\n/,
 	'formats ceil bracket inner expression';
 like $current_syntax_tidy, qr/\nlet bits := a & b \| c \^ d;\n/,
 	'formats bitwise operator spacing';
-like $current_syntax_tidy, qr/\nlet set_single := « 1, 2, 3 »;\n/,
-	'removes trailing comma for single-line guillemet sets';
+like $current_syntax_tidy, qr/\nlet set_single := «\n\t1,\n\t2,\n\t3,\n»;\n/,
+	'forces multi-line guillemet set when source has a trailing comma';
 like $current_syntax_tidy, qr/\nlet diff := left \\ right;\n/,
 	'formats set-difference operator spacing';
 like $current_syntax_tidy, qr/\nasync function worker \(value\) \{/,
