@@ -1,11 +1,13 @@
 use Test2::V0;
 
 use Encode qw( decode );
+use File::Basename qw( dirname );
 use File::Spec;
-use File::Temp qw( tempdir );
+use File::Temp qw( tempdir tempfile );
 use IPC::Open3 qw( open3 );
 use Symbol qw( gensym );
 
+use Zuzu::Parser;
 use Zuzu::Tidy;
 
 my $messy = <<'SRC';
@@ -445,5 +447,215 @@ open my $rfh, '<:encoding(UTF-8)', $script
 my $rewritten = do { local $/; <$rfh> };
 close $rfh;
 is $rewritten, "let n := 1;\n", '--in-place writes tidied content';
+
+## ------------------------------------------------------------------
+## Syntax-stress regression harness (examples/syntax-stress-test).
+##
+## Fixtures under t/fixtures/ugly/ are verbatim copies of
+## examples/syntax-stress-test/uglified/*.zzs. They are intentionally
+## ugly and must not be cleaned up: they exist to exercise Zuzu::Tidy
+## against real-world messy input.
+## ------------------------------------------------------------------
+
+my $zuzu_bin  = File::Spec->catfile( $repo_root, 'bin', 'zuzu.pl' );
+my @stdlib_includes = (
+	'-I', File::Spec->catdir( $repo_root, 'stdlib', 'modules' ),
+	'-I', File::Spec->catdir( $repo_root, 'stdlib', 'test-modules' ),
+);
+
+sub _slurp {
+	my ( $path ) = @_;
+	open my $fh, '<:encoding(UTF-8)', $path or die "Could not read $path: $!";
+	local $/;
+	my $content = <$fh>;
+	close $fh;
+	return $content;
+}
+
+sub _run_under_zuzu_perl {
+	my ( $script_path ) = @_;
+	my @cmd = ( $^X, $zuzu_bin, @stdlib_includes, $script_path );
+	my ( $stdout, $stderr ) = ( '', '' );
+	my $err = gensym;
+	my $pid = open3( my $in, my $out, $err, @cmd );
+	close $in;
+	$stdout = do { local $/; <$out> };
+	$stderr = do { local $/; <$err> };
+	waitpid $pid, 0;
+	my $exit = $? >> 8;
+	return { exit => $exit, stdout => $stdout, stderr => $stderr, cmd => join( ' ', @cmd ) };
+}
+
+sub _tap_passed {
+	my ( $result ) = @_;
+	return 0 if $result->{exit} != 0;
+	return 0 if $result->{stdout} =~ /^\s*not ok\b/m;
+	return 1;
+}
+
+my @stress_fixtures = qw(
+	01-control-and-literals.zzs
+	02-objects-traits-and-accessors.zzs
+	03-collections-paths-and-slices.zzs
+	04-functions-lambdas-and-spread.zzs
+	05-async-spawn-and-exceptions.zzs
+);
+
+my $fixtures_dir = File::Spec->catdir( $repo_root, 't', 'fixtures', 'ugly' );
+my $manually_tidied_dir = File::Spec->catdir(
+	$repo_root, '..', 'examples', 'syntax-stress-test', 'manually-tidied'
+);
+
+for my $name ( @stress_fixtures ) {
+	my $ugly_path = File::Spec->catfile( $fixtures_dir, $name );
+	my $ugly_src = _slurp($ugly_path);
+	my $tidied = Zuzu::Tidy->tidy( $ugly_src, filename => $name );
+
+	my $parser = Zuzu::Parser->new;
+	my $parse_ok = eval {
+		$parser->parse( $tidied, $name );
+		1;
+	};
+	my $parse_error = $@;
+	ok $parse_ok, "$name: auto-tidied ugly fixture parses with Zuzu::Parser"
+		or diag "Parse error for $name:\n$parse_error\n---- tidied output ----\n$tidied";
+
+	my $tmpdir = tempdir( CLEANUP => 1 );
+	my $tidied_path = File::Spec->catfile( $tmpdir, $name );
+	open my $fh, '>:encoding(UTF-8)', $tidied_path
+		or die "Could not write $tidied_path: $!";
+	print {$fh} $tidied;
+	close $fh;
+
+	my $result = _run_under_zuzu_perl($tidied_path);
+	ok _tap_passed($result), "$name: auto-tidied ugly fixture runs under zuzu-perl"
+		or diag "Command: $result->{cmd}\nExit: $result->{exit}\nSTDOUT:\n$result->{stdout}\nSTDERR:\n$result->{stderr}";
+}
+
+for my $name ( @stress_fixtures ) {
+	my $manual_path = File::Spec->catfile( $manually_tidied_dir, $name );
+	next if ! -f $manual_path;
+	my $manual_src = _slurp($manual_path);
+
+	my $parser = Zuzu::Parser->new;
+	my $parse_ok = eval {
+		$parser->parse( $manual_src, $name );
+		1;
+	};
+	ok $parse_ok, "$name: manually-tidied fixture parses with Zuzu::Parser"
+		or diag "Parse error for $name:\n$@";
+
+	my $result = _run_under_zuzu_perl($manual_path);
+
+	# Known pre-existing bug in std/path/z/node.zzm's Node.children(),
+	# unrelated to Zuzu::Tidy: indexing failure under zuzu-perl even for
+	# the original, never-tidied source. Out of scope for this plan
+	# (Assumptions: changes are scoped to Zuzu::Tidy unless lexer/parser
+	# defects are found). Tracked here so a real fix shows up as a new
+	# failure instead of silently staying broken.
+	if ( $name eq '03-collections-paths-and-slices.zzs' ) {
+		todo 'pre-existing std/path/z/node.zzm runtime bug, unrelated to Zuzu::Tidy' => sub {
+			ok _tap_passed($result), "$name: manually-tidied fixture runs under zuzu-perl";
+		};
+		next;
+	}
+
+	ok _tap_passed($result), "$name: manually-tidied fixture runs under zuzu-perl"
+		or diag "Command: $result->{cmd}\nExit: $result->{exit}\nSTDOUT:\n$result->{stdout}\nSTDERR:\n$result->{stderr}";
+}
+
+## ------------------------------------------------------------------
+## Focused assertions for the known bad shapes from
+## examples/syntax-stress-test/tidy-improvements.md. These currently
+## fail (Phase 1 of that plan) and should turn green as the formatter
+## is fixed in subsequent phases.
+## ------------------------------------------------------------------
+
+my $pairlist_spread_src = <<'SRC';
+let merged := combine(...{{ left: "(", left: "{" }});
+SRC
+my $pairlist_spread_tidy = Zuzu::Tidy->tidy(
+	$pairlist_spread_src,
+	filename => 'pairlist-spread.zzs',
+);
+like $pairlist_spread_tidy, qr/\.\.\.\{\{.*?\}\}/s,
+	'pairlist spread keeps doubled {{ ... }} delimiters intact';
+unlike $pairlist_spread_tidy, qr/\.\.\.\{\s*\n?\s*\{/,
+	'pairlist spread is not split into a nested { { ... } } block';
+
+my $class_brace_tidy = Zuzu::Tidy->tidy(
+	"class Record with Labelled{let String name:=\"x\"}\n",
+	filename => 'class-brace.zzs',
+);
+unlike $class_brace_tidy, qr/\{\s*let\b/,
+	'class opening brace is followed by a newline, not an inline field declaration';
+
+my $function_brace_tidy = Zuzu::Tidy->tidy(
+	"function classify(Number n)->String{if(n>0){return \"pos\"}return \"non-pos\"}\n",
+	filename => 'function-brace.zzs',
+);
+unlike $function_brace_tidy, qr/\{\s*if\s*\(/,
+	'function opening brace is followed by a newline, not an inline if statement';
+
+my $method_brace_tidy = Zuzu::Tidy->tidy(
+	"class Demo{method summary()->String{return \"ok\"}}\n",
+	filename => 'method-brace.zzs',
+);
+unlike $method_brace_tidy, qr/\{\s*return\b/,
+	'method opening brace is followed by a newline, not an inline return';
+
+my $async_brace_tidy = Zuzu::Tidy->tidy(
+	"async function delayed_double(Number n)->Number{await{sleep(0.01)}return n*2}\n",
+	filename => 'async-brace.zzs',
+);
+unlike $async_brace_tidy, qr/\{\s*await\s*\{/,
+	'async function opening brace is followed by a newline, not an inline await block';
+
+my $static_method_tidy = Zuzu::Tidy->tidy(
+	"class Builder{method summary()->String{return \"a\"}static method make()->Builder{return new Builder()}}\n",
+	filename => 'static-method.zzs',
+);
+unlike $static_method_tidy, qr/\}\s*static\s+method\b/,
+	'closing a method body does not collapse onto the same line as the next static method declaration';
+
+my $try_catch_src = <<'SRC';
+try{
+step1()
+step2()
+step3()
+step4()
+step5()
+}catch(Exception e){handle(e)}
+SRC
+my $try_catch_tidy = Zuzu::Tidy->tidy( $try_catch_src, filename => 'try-catch.zzs' );
+unlike $try_catch_tidy, qr/\}\n\n\s*catch\b/,
+	'try/catch stay adjacent with no blank line between the closing } and catch';
+
+my $for_else_src = <<'SRC';
+for(let item in items){
+step1(item)
+step2(item)
+step3(item)
+step4(item)
+step5(item)
+}else{say "nothing"}
+SRC
+my $for_else_tidy = Zuzu::Tidy->tidy( $for_else_src, filename => 'for-else.zzs' );
+unlike $for_else_tidy, qr/\}\n\n\s*else\b/,
+	'for/else stay adjacent with no blank line between the closing } and else';
+
+my $multiline_call_tidy = Zuzu::Tidy->tidy(
+	"call_twice(function(value){step_one(value)step_two(value)}, 4);\n",
+	filename => 'multiline-call.zzs',
+);
+unlike $multiline_call_tidy, qr/^\s*,\s*\d/m,
+	'a trailing call argument after a callback is not stranded alone on its own line';
+
+my $index_call_tidy = Zuzu::Tidy->tidy(
+	"let lambda_values:=[await{async_lambdas[0](10);},await{async_lambdas[1](10);},];\n",
+	filename => 'index-call.zzs',
+);
+unlike $index_call_tidy, qr/\[\s*0\s*,?\s*\n/,
+	'a simple index expression is never split across a line break';
 
 done_testing;
