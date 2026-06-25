@@ -8,6 +8,8 @@ but using Perlish version numbers like `x.yyyzzz` instead of `x.y.z`.
 
 ## Unreleased
 
+*stdlib tag 20260625, languagetests tag 20260625.*
+
 ### Added
 
 - Added the `#value` cardinality prefix operator, which calls a concrete
