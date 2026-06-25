@@ -1260,27 +1260,35 @@ sub eval_let_unpack {
 	my $source = $node->init->evaluate($self);
 	my $dict = $self->_unwrap_builtin_collection( $source, 'Dict' );
 	my $pairlist = $self->_unwrap_builtin_collection( $source, 'PairList' );
-	if ( !$dict and !$pairlist ) {
+	my $array = $self->_unwrap_builtin_collection( $source, 'Array' );
+	if ( !$dict and !$pairlist and !$array ) {
 		my $type = $self->_type_name($source);
 		die Zuzu::Error->new_runtime(
-			message => "Declaration unpacking expects Dict or PairList, got $type",
+			message => "Declaration unpacking expects Dict, PairList, or Array, got $type",
 			file => $node->file,
 			line => $node->line,
 		);
 	}
 
 	my @resolved;
+	my $index = 0;
 	for my $binding ( @{ $node->bindings // [] } ) {
-		my $key = $binding->{key_expr}->evaluate($self);
-		$key = defined($key) ? "$key" : '';
 		my ( $present, $value );
-		if ($dict) {
-			$present = exists $dict->map->{$key} ? 1 : 0;
-			$value = slot_value( \$dict->map->{$key} ) if $present;
+		if ($array) {
+			$present = $index < @{ $array->items } ? 1 : 0;
+			$value = slot_value( \$array->items->[$index] ) if $present;
 		}
 		else {
-			$present = $pairlist->contains_key($key) ? 1 : 0;
-			$value = $pairlist->get($key) if $present;
+			my $key = $binding->{key_expr}->evaluate($self);
+			$key = defined($key) ? "$key" : '';
+			if ($dict) {
+				$present = exists $dict->map->{$key} ? 1 : 0;
+				$value = slot_value( \$dict->map->{$key} ) if $present;
+			}
+			else {
+				$present = $pairlist->contains_key($key) ? 1 : 0;
+				$value = $pairlist->get($key) if $present;
+			}
 		}
 
 		if ( !$present and $binding->{has_default} ) {
@@ -1300,6 +1308,7 @@ sub eval_let_unpack {
 		) if !$binding->{_skip_type_check};
 
 		push @resolved, [ $binding, $value ];
+		$index++;
 	}
 
 	for my $item ( @resolved ) {
@@ -3426,8 +3435,44 @@ sub eval_unary {
 		}
 		return length( $self->_to_OperatorString( $v, $node->file, $node->line ) );
 	}
+	if ( $op eq '#' ) {
+		return $self->_cardinality_value( $v, $node->file, $node->line );
+	}
 	return $self->_type_name($v) if $op eq 'typeof';
 	die Zuzu::Error->new_runtime(message => "Unsupported unary op '$op'", file => $node->file, line => $node->line);
+}
+
+sub _cardinality_value {
+	my ( $self, $value, $file, $line ) = @_;
+
+	if ( blessed($value) ) {
+		if (
+			$value->isa('Zuzu::Value::Array')
+			or $value->isa('Zuzu::Value::Dict')
+			or $value->isa('Zuzu::Value::PairList')
+			or $value->isa('Zuzu::Value::Set')
+			or $value->isa('Zuzu::Value::Bag')
+		) {
+			return $value->count;
+		}
+		if ( $value->isa('Zuzu::Value::Object') ) {
+			my $method = $self->_lookup_method( $value->class, 'count', 0 );
+			return $self->_call_method(
+				$method,
+				$value,
+				[],
+				$EMPTY_HASH,
+				$EMPTY_ARRAY,
+				$file,
+				$line,
+			) if $method;
+		}
+		if ( $value->isa('Zuzu::Value::BinaryString') ) {
+			return $value->byte_length;
+		}
+	}
+
+	return length( $self->_to_OperatorString( $value, $file, $line ) );
 }
 
 sub _make_lvalue_ref_closure {
@@ -4791,6 +4836,17 @@ sub eval_member_call {
 			die Zuzu::Error->new_runtime(message => "Named arguments are not supported for Bag methods", file => $node->file, line => $node->line)
 				if _named_pairs_count( $named_pairs );
 			return $self->_bag_method($bag_like, $node->method, $positional, $node->file, $node->line);
+		}
+		if ( my $fallback = $self->_call_missing_method_fallback(
+			$obj,
+			$node->method,
+			$positional,
+			$named_pairs,
+			$node->file,
+			$node->line,
+			$node->{_arg_static_types},
+		) ) {
+			return $fallback->[0];
 		}
 		die Zuzu::Error->new_runtime(message => "Unknown method '".$node->method."'", file => $node->file, line => $node->line);
 	}
@@ -6491,6 +6547,31 @@ sub _named_pairs_count {
 	return 0 if !defined $named_pairs;
 
 	return scalar @{ $named_pairs };
+}
+
+sub _call_missing_method_fallback {
+	my ( $self, $obj, $method_name, $positional, $named_pairs, $file, $line, $arg_static_types ) = @_;
+
+	my $fallback = $self->_lookup_method( $obj->class, '__call__', 0 )
+		or return undef;
+
+	my $args_array = Zuzu::Value::Array->new(
+		items => [ @{ $positional // $EMPTY_ARRAY } ],
+	);
+	my $opts_pairlist = Zuzu::Value::PairList->new(
+		list => [ map { [ $_->[0], $_->[1] ] } @{ $named_pairs // $EMPTY_ARRAY } ],
+	);
+
+	return [ $self->_call_method(
+		$fallback,
+		$obj,
+		[ $method_name, $args_array, $opts_pairlist ],
+		$EMPTY_HASH,
+		$EMPTY_ARRAY,
+		$file,
+		$line,
+		$arg_static_types,
+	) ];
 }
 
 sub _call_method {

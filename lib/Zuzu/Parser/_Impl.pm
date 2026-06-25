@@ -2239,6 +2239,7 @@ sub parse_prefix {
 			or $t->value eq '!'
 			or $t->value eq '¬'
 			or $t->value eq '~'
+			or $t->value eq '#'
 			or $t->value eq '√'
 			or $t->value eq '\\'
 		)

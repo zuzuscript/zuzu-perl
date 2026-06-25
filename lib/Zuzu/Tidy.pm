@@ -33,6 +33,7 @@ my %UNARY_PREFIX_OP = map { $_ => 1 } qw(
 	+ - ! not ¬ ~ √ \ ++ --
 	abs sqrt floor ceil round int uc lc length typeof new
 );
+$UNARY_PREFIX_OP{'#'} = 1;
 my %NO_SPACE_BEFORE = map { $_ => 1 } ( ',', ';', ')', ']', '}', '⌋', '⌉', '.', ':' );
 my %NO_SPACE_AFTER  = map { $_ => 1 } ( '(', '[', '{', '⌊', '⌈', '.' );
 my %CONTROL_KW = map { $_ => 1 } qw( if else while for switch catch unless );
