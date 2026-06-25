@@ -10,6 +10,8 @@ but using Perlish version numbers like `x.yyyzzz` instead of `x.y.z`.
 
 ### Added
 
+- Added `std/string.repeat` for repeating `String` or `BinaryString` values
+  with optional same-type separators.
 - Switch case and default bodies now have access to the active switch value
   via `^^`, including when execution falls through cases.
 
