@@ -36,9 +36,9 @@ languagetests/lang/functions/predeclarations.zzs
 languagetests/lang/functions/return-if.zzs
 languagetests/lang/functions/signatures.zzs
 languagetests/lang/functions/variadic.zzs
+languagetests/lang/keywords/array-declaration-unpacking.zzs
 languagetests/lang/keywords/debug-assert.zzs
 languagetests/lang/keywords/declaration-unpacking.zzs
-languagetests/lang/keywords/array-declaration-unpacking.zzs
 languagetests/lang/keywords/declarations.zzs
 languagetests/lang/keywords/errors.zzs
 languagetests/lang/keywords/flow.zzs
@@ -1834,6 +1834,7 @@ stdlib/tests/std/secure/_sign_ecdsa.zzs
 stdlib/tests/std/secure/_sign_ed25519.zzs
 stdlib/tests/std/secure/_tls_identity.zzs
 stdlib/tests/std/string.zzs
+stdlib/tests/std/string/_sprint.zzs
 stdlib/tests/std/string/base64.zzs
 stdlib/tests/std/string/encode.zzs
 stdlib/tests/std/string/quoted_printable.zzs
@@ -1944,6 +1945,11 @@ t/bench/std-string-phase6-thresholds.json
 t/bench/std-string-phase6.pl
 t/bench/test4-performance-gate.pl
 t/bench/test4-thresholds.json
+t/fixtures/ugly/01-control-and-literals.zzs
+t/fixtures/ugly/02-objects-traits-and-accessors.zzs
+t/fixtures/ugly/03-collections-paths-and-slices.zzs
+t/fixtures/ugly/04-functions-lambdas-and-spread.zzs
+t/fixtures/ugly/05-async-spawn-and-exceptions.zzs
 t/integration/binary-string-phase2.t
 t/integration/binary-string-phase3.t
 t/integration/binary-string-phase4.t
