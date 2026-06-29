@@ -23,8 +23,10 @@ my @runtime_lib = (
 	File::Spec->catdir( $repo_root, 'stdlib', 'modules' ),
 );
 my $zuzu_bin = File::Spec->catfile( $repo_root, 'bin', 'zuzu.pl' );
+my $zuzu_runner_dir =
+	tempdir( 'zuzu-ztest-runner-XXXXXXXX', DIR => $repo_root, CLEANUP => 1 );
 my $zuzu_runner = _write_zuzu_runner(
-	File::Spec->catfile( tempdir( CLEANUP => 1 ), 'zuzu-current-perl' ),
+	File::Spec->catfile( $zuzu_runner_dir, 'zuzu-current-perl' ),
 	$^X,
 	$zuzu_bin,
 );
@@ -73,6 +75,10 @@ for my $ztest_path ( @zzs_files ) {
 			fail 'executed ztest script';
 			if ( defined $run->{error} and $run->{error} ne '' ) {
 				diag $run->{error};
+			}
+			if ( length $run->{stdout} ) {
+				diag "stdout from $display_name:";
+				diag $run->{stdout};
 			}
 			if ( length $run->{stderr} ) {
 				diag "stderr from $display_name:";
