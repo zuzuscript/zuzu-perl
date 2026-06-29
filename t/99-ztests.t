@@ -69,7 +69,7 @@ for my $ztest_path ( @zzs_files ) {
 		}
 		pass 'parsed ztest source';
 
-		my $run = _run_ztest_cli($ztest_path);
+		my $run = _run_ztest_cli( $ztest_path, $display_name );
 
 		if ( not $run->{ok} ) {
 			fail 'executed ztest script';
@@ -106,7 +106,7 @@ for my $ztest_path ( @zzs_files ) {
 }
 
 sub _run_ztest_cli {
-	my ( $ztest_path ) = @_;
+	my ( $ztest_path, $display_name ) = @_;
 
 	my @cmd = (
 		$^X,
@@ -119,6 +119,8 @@ sub _run_ztest_cli {
 	my $ran = eval {
 		local $ENV{ZUZU} = $zuzu_runner;
 		local $ENV{FIXTURE_DIR} = $fixture_dir;
+		local $ENV{ZUZU_PROC_RUN_DIAG} =
+			$display_name eq 'stdlib/tests/test/zuzuprove.zzs' ? 1 : undef;
 		run( \@cmd, '<', \undef, '>', \$stdout, '2>', \$stderr );
 		1;
 	};
