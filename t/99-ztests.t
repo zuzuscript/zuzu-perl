@@ -58,6 +58,13 @@ for my $ztest_path ( @zzs_files ) {
 		if ( $display_name eq 'stdlib/tests/javascript.zzs' ) {
 			plan skip_all => 'Perl runtime does not support the javascript module';
 		}
+		if (
+			$display_name eq 'stdlib/tests/std/string/_sprint.zzs'
+			&& $] < 5.030
+		) {
+			plan skip_all =>
+				'Perl before 5.30 rounds some sprintf floats differently';
+		}
 
 		my $source = _slurp_utf8( $ztest_path );
 		ok defined $source, 'loaded ztest source';

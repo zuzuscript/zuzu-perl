@@ -11,7 +11,9 @@ but using Perlish version numbers like `x.yyyzzz` instead of `x.y.z`.
 ### Fixed
 
 - CI ztest runs now give nested ZuzuScript subprocesses the full stdlib module
-  path and deterministic `zuzuprove --verbose` markers.
+  path and deterministic `zuzuprove --verbose` markers, while skipping a
+  shared `sprintf` rounding check on old Perls with incompatible float
+  formatting.
 
 ## 0.007001 - 2026-06-29
 
